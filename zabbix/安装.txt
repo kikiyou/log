@@ -1,0 +1,10 @@
+安装
+brew install zabbix --without-server-proxy
+启动
+zabbix_agentd
+访问
+http://localhost:9020
+
+
+
+
