@@ -1,9 +1,8 @@
 安装
 brew install zabbix --without-server-proxy
 启动
+cd /usr/local/Cellar/zabbix/2.4.7/sbin
 zabbix_agentd
-访问
-http://localhost:9020
 
 
 
