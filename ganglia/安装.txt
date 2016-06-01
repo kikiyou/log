@@ -1,0 +1,503 @@
+监控节点需要安装的软件：
+
+Ganglia
+
+Ganglia-web
+
+Php
+
+Apache
+
+ 
+
+被监控节点需要安装的软件
+
+Ganglia
+
+ 
+
+安装路径规划：
+
+软件名称
+
+路径
+
+ganglia安装路径
+
+/usr/local/ganglia
+
+php安装路径
+
+/usr/local/php
+
+apache安装路径
+
+/usr/local/apache2
+
+ganglia-web安装路径
+
+/home/gangliaInstall/ganglia/ganglia-web-3.5.10
+
+rrds数据路径
+
+/home/gangliaInstall/ganglia/rrds
+
+ 
+
+相关软件安装配置：
+
+从网络下载：
+
+ ganglia-3.6.0.tar.gz
+
+ganglia-web-3.5.10.tar.gz
+
+ httpd-2.2.23.tar.gz
+
+php-5.4.10.tar.gz         http://cn2.php.net/distributions/php-5.4.10.tar.gz
+
+confuse-2.7                 http://www.nongnu.org/confuse/
+
+ 
+
+主机节点检查：
+
+rpm -q gcc glibc glibc-common rrdtool rrdtool-devel apr apr-devel expat expat-devel  pcre pcre-devel dejavu-lgc-sans-mono-fonts dejavu-sans-mono-fonts
+
+该命令会列出这些依赖软件的安装信息，如果未安装，则需要安装，命令如下
+
+yum install xxx
+
+由于libconfuse库不能用yum安装，需要下载（下载地址如上）
+
+下载完后，放到安装目录，并进行解压
+
+tar –xzvf  confuse-2.7.tar.gz
+
+cd  ./confuse-2.7
+
+./configure CFLAGS=-fPIC –disable-nls
+
+make
+
+make install
+
+ 
+
+安装ganglia(全部节点都要安装)
+
+ tar –xzvf  ganglia-3.6.0.tar.gz
+
+ cd ganglia-3.60
+
+./configure --prefix=/usr/local/ganglia --with-gmetad --enable-gexec --with-python=/usr/local –with-librrd=/usr/bin
+
+  Make
+
+  make install
+
+ 
+
+安装ganglia-web（仅主节点安装）
+
+ tar -zvxf ganglia-web-3.5.10.tar.gz
+
+ cp ganglia-web-3.5.10  /home/gangliaInstall/ganglia –rf
+
+ cd /gangliaInstall/ganglia/ganglia-web-3.5.10
+
+  cp conf_default.php conf.php
+
+  vim conf.php
+
+///////////////////////////修改conf.php的信息/////////////
+
+ 
+
+#$conf['gweb_confdir'] = "/var/lib/ganglia-web";    //注释掉
+
+$conf['gweb_confdir'] = "/home /gangliaInstall/ganglia/ganglia-web-3.5.10";
+
+ 
+
+#$conf['gmetad_root'] = "/var/lib/ganglia";   //注释掉
+
+$conf['gmetad_root'] = "/home /gangliaInstall/ganglia";
+
+ 
+
+////////////////////////保存退出//////////////////////////////////
+
+ 
+
+ vim header.php
+
+//////////////////////修改header.php信息/////////////////
+
+<?php
+
+session_start();
+
+ini_set('date.timezone', 'PRC');  //添加，-修改时区为本地时区
+
+ 
+
+if (isset($_GET['date_only'])) {
+
+  $d = date("r");
+
+  echo $d;
+
+  exit(0);
+
+}
+
+//////////////////////////保存退出//////////////////
+
+ 
+
+cd /home /gangliaInstall/ganglia/ ganglia-web-3.5.10/dwoo
+
+mkdir  cache
+
+ chmod  777  cache
+
+ mkdir  compiled
+
+ chmod  777  compiled
+
+ 
+
+安装apache（主节点）
+
+  tar –xzvf  httpd-2.2.23.tar.gz
+
+ cd httpd-2.2.23/srclib
+
+cd apr
+
+  ./configure  --prefix=/usr/local/apr
+
+ Make
+
+ make install
+
+cd ..
+
+cd apr-util
+
+./configure –prefix=/usr/local/apr-util –with-apr=/usr/local/apr
+
+ make
+
+ make install
+
+cd ../../
+
+  ./configure --prefix=/usr/local/apache2  --with-arp=/usr/local/apr --with-apr-util=/usr/local/apr-util
+
+  make
+
+  make install
+
+当安装完成后，访问http://ip  (我的ip为10.215.80.54，访问的就是http://10.215.80.54)，测试是否正常工作，该命令访问的是/usr/local/apache2/htdocs/index.html，如果正常，则可正常访问到该页面，否则会出访问错误信息。
+
+安装php（主节点）
+
+ tar –xavf php-5.4.10.tar.gz
+
+cd php-5..4.10
+
+ ./configure --prefix=/usr/local/php  --with-apxs2=/usr/local/apache2/bin/apxs  --with-mysql=mysqlnd
+
+  make
+
+  make test
+
+  make install
+
+安装完成后，要测试apache是否对php支持。
+
+创建 /usr/local/apache2/htdocs/index.php
+
+编辑并添加如下内如到文件
+
+///////////////// index.php中添加的内容///////////
+
+<?
+
+Phpinfo()
+
+?>
+
+///////////////// 保存退出///////////
+
+ 
+
+访问http://10.215.80.54/index/php，如果访问成功，则网页会显示有关php的信息，否则访问失败。
+
+访问失败表示apache对php不支持，需要做如下修改：
+
+1：find到libphp5.so，将其拷贝到 /usr/local/apache2/modules/ 目录下
+
+2：打开 /usr/local/apache2/conf/httpd.conf文件，并添如下信息到其中
+
+///////////////////httpd.conf文件添加内容///////////////////
+
+<FilesMatch "\.php$">
+
+  SetHandler application/x-httpd-php
+
+</FilesMatch>
+
+ 
+
+<FilesMatch "\.ph(p[2-6]?|tml)$">
+
+  SetHandler application/x-httpd-php
+
+</FilesMatch>
+
+ 
+
+<FilesMatch "\.phps$">
+
+  SetHandler application/x-httpd-php-source
+
+</FilesMatch>
+
+ 
+
+LoadModule php5_module modules/libphp5.so
+
+ 
+
+<ifModule dir_module>
+
+   DirectoryIndex index.html index.php
+
+</ifModule>
+
+///////////////////保存退出///////////////////
+
+ 
+
+重启apache ：/usr/local/apache2/bin/apachectl  restart             
+
+重新访问并测试是否成功
+
+ 
+
+注意：
+
+软件全部安装完后，需要修改共享库配置信息
+
+vim /etc/ld.so.conf
+
+增加如下内容
+
+/usr/local/lib
+
+启动：ldconfig
+
+ 
+
+使用Apache发布ganglia-web日志（主节点）
+
+编辑httpd.conf文件
+
+Vim /usr/local/apache2/conf/httpd.conf
+
+在文件中有<Directory  XXX>   </Directory>标签后添加如下内容
+
+////////////////////////添加内容////////////////////////////
+
+Alias /ganglia "/home/gangliaInstall/ganglia/ganglia-web-3.5.10"
+
+<Directory "/home/gangliaInstall/ganglia/ganglia-web-3.5.10">
+
+ 
+
+    AuthType Basic
+
+    #Options None
+
+    Options Indexes FollowSymLinks
+
+    AllowOverride None
+
+    Order allow,deny
+
+    Allow from all
+
+</Directory>
+
+////////////////////////保存退出////////////////////////////
+
+重启apache
+
+/usr/local/apache2/bin/apachectl  restart
+
+ 
+
+配置gmetad（主节点配置）
+
+进入ganglia安装文件
+
+cd ganglia-3.6.0
+
+cp ./gmetad/gmetad.init  /etc/init.d/gmetad
+
+cp ./gmetad/gmetad.conf  /usr/local/ganglia/etc
+
+ 
+
+修改gmetad
+
+vim /etc/init.d/gmetad
+
+///////////////////////////////////////////////
+
+GMETAD=/usr/local/ganglia/sbin/gmetad
+
+//////////////////////////////////////////////////
+
+ 
+
+修改gmetad.conf配置文件
+
+vim  /usr/local/ganglia/etc/gmetad.conf
+
+///////////////////////////////////////////////
+
+data_source “xxxx(name)”cluster_ip
+
+xml_port  8651
+
+interactive_port  8652
+
+rrd_rootdir  “/home/gangliaInstall/ganglia/rrds”
+
+case_sensitive_hostnames  0
+
+//////////////////////////////////////////////
+
+service gmetad restart (重启gmetad)
+
+ 
+
+配置gmond（全部节点）
+
+进入ganglia源目录
+
+cd ganglia-3.6.0
+
+cp ./gmond/gmond.init  /etc/init.d/gmond
+
+./gmond/gmond –t > /usr/local/ganglia/etc/gmond.conf
+
+修改gmond配置
+
+vim  /etc/init.d/gmond
+
+////////////////////////////
+
+GMOND=/usr/local/ganglia/sbin/gmond
+
+//////////////////////////////
+
+ 
+
+修改gmond.conf配置
+
+vim  /usr/local/ganglia/etc/gmond.conf
+
+/////////////////////////////////
+
+cluster {
+
+name = “xxx(name)”#要与gmated.conf中data_source的名称相同
+
+owner = “nobody”
+
+latlong = “unspecified”
+
+url = “unspecified”
+
+}
+
+ 
+
+配置网络（多播，单播）
+
+udp_send_channel
+
+{#信息修改
+
+port = 8649
+
+host = 10.215.80.54
+
+}
+
+udp_recv_channel
+
+{#信息修改
+
+port = 8649
+
+bind = 10.215.80.54
+
+}
+
+tcp_accept_channel
+
+{#信息修改
+
+port = 8649
+
+acl{
+
+default = “deny”
+
+access{
+
+ip = 10.215.80.54
+
+mask = 32
+
+action = “allow”
+
+}
+
+}
+
+}
+
+/////////////////////////////////////////
+
+ 
+
+拷贝python脚本
+
+mkdir /usr/local/ganglia/lib64/ganglia/python_modules
+
+cp ./gmond/python_modules/*/*.py  /usr/local/ganglia/python_modules
+
+重启gmond   service gmond restart
+
+ 
+
+测试：
+
+当完成上面安装后，访问http://ip/ganglia （该处是你本人的IP地址），将会看到展示的监控信息
+
+
+
+
+
+注：当有信息出错时，可以查看log文件
+
+tail –n 100 /var/log/message   //查看对进的100行
+
+echo /dev/null > /var/log/message  //清空messag
