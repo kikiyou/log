@@ -1,0 +1,343 @@
+
+
+1.概述
+
+　　今天接着《ElasticSearch实战－日志监控平台》一文来给大家分享后续的学习，在《ElasticSearch实战－日志监控平台》中给大家介绍一个日志监控平台的架构方案，接下来给大家分享如何去搭建部署这样一个平台，给大家做一个入门介绍。下面是今天的分享目录：
+
+搭建部署 Elastic 套件
+运行集群
+截图预览
+　　下面开始今天的内容分享。
+
+2.搭建部署 Elastic 套件
+
+　　搭建 Elastic 套件较为简单，下面我们开始去搭建部署相关套件，首先我们准备必要的环境。
+
+2.1 基础软件
+
+　　大家可以 Elastic 的官方网站下载对应的安装包，地址如下所示：
+
+　　［下载地址］
+
+　　另外，一个基础环境就是需要用到 JDK，ES 集群依赖 JDK，地址如下所示：
+
+　　［下载地址］
+
+2.2 Logstash 部署
+
+　　这里我们将 Logstash 的服务部署在中心节点中，其核心配置文件如下所示：
+
+central.conf
+复制代码
+复制代码
+input {
+    redis {
+        host => "10.211.55.18"
+        port => 6379 
+        type => "redis-input"
+        data_type => "list"
+        key => "key_count"
+    }   
+}
+filter {
+    grok {
+        match => ["message", "%{IPORHOST:client} (%{USER:ident}|-) (%{USER:auth}|-) \[%{HTTPDATE:timestamp}\] \"(?:%{WORD:verb} %{NOTSPACE:request}(?: HTTP/%{NUMBER:http_version})?|-)\" %{NUMBER:response} %{NUMBER:bytes} \"(%{QS:referrer}|-)\" \"(%{QS:agent}|-)\""]
+    }
+    kv {
+                source => "request"
+                field_split => "&?"
+                value_split => "="
+        }
+    urldecode {
+        all_fields => true
+    }
+}
+
+output {
+    elasticsearch {
+        cluster => "elasticsearch"
+        codec => "json"
+        protocol => "http"
+    }   
+}
+复制代码
+复制代码
+　　其代理节点，分别部署在日志生产节点之上，核心配置文件如下所示：
+
+shipper.conf
+复制代码
+复制代码
+input {
+    file {
+        type => "type_count"
+        path => ["/home/hadoop/dir/portal/t_customer_access.log"]
+        exclude => ["*.gz", "access.log"]
+    }   
+}
+
+output {
+    stdout {}
+    redis {
+        host => "10.211.55.18"
+        port => 6379
+        data_type => "list"
+        key => "key_count"
+    }   
+}
+复制代码
+复制代码
+2.3 Elasticsearch 部署
+
+　　接着，我们部署 ES 集群，配置较为简单，其配置内容如下所示：
+
+elasticsearch.yml
+node.name: "node1"
+　　这里我只配置了其节点名称信息，集群名称使用默认的，若大家需要配置其他信息可自行处理，需要注意的是，这里在实用 scp 命令分发到其他节点时，需要修改其属性值，保持每个节点的 node.name 值不一样即可。
+
+　　另外，在安装插件 ES 集群的相关插件时，可以使用以下命令：
+
+head 插件
+sudo elasticsearch/bin/plugin -install mobz/elasticsearch-head
+bigdesk 插件
+sudo elasticsearch/bin/plugin -install lukas-vlcek/bigdesk
+　　其对应的 Web UI 界面如下图所示：
+
+head插件的界面
+
+
+bigdesk的界面
+
+
+　　关于其他的 ES 集群的插件，搭建可以根据实际业务需求进行选择性的安装，这里就不多赘述了。
+
+2.4 Kibana 部署
+
+　　这里我们需要安装一个能够去可视化 ES 集群数据的工具，这里我们选择 Kibana 工具去可视化我们的数据，其安装较为简单，只需配置对应的核心文件即可，配置如下：
+
+kibana.yml
+
+elasticsearch_url: "http://10.211.55.18:9200"
+　　这里去可视化 node1 节点 ES 集群中数据。
+
+3.运行集群
+
+　　接着，我们启动整个系统，启动步骤如下所示：
+
+启动 Redis
+[hadoop@dn1 ~]$ redis-server &
+启动代理节点（分别在其代理节点启动shipper）
+bin/logstash agent --verbose --config conf/shipper.conf --log logs/stdout.log &
+启动中心服务
+bin/logstash agent --verbose --config conf/central.conf --log logs/stdout.log &
+启动 ES 集群（分别在 ES 节点启动）
+bin/elasticsearch start
+启动 Kibana 服务
+bin/kibana
+4.预览截图
+
+　　这里，我们可以预览收集的日志，日志信息我只抽取了几条，截图如下：
+
+
+
+　　我们还可以使用筛选功能，选取我们需要观察的数据结果，这里我们筛选了 IP 和 AppName 属性进行观察，如下图所示：
+
+
+
+5.总结
+
+　　这里需要注意的是，若是我们首次启动 Kibana 服务，收集日志信息为空的情况下，在我们创建索引时，Settings 模块下的界面中 Create 按钮会是灰色状态，导致无法创建，这里大家在创建的时候需要保证我们有日志已被收集存储到 ES 集群。如下图，由于我已收集存储日志到 ES 集群，所以按钮呈现绿色状态，供点击创建。如下图所示：
+
+
+
+6.结束语
+
+　　这篇博客就和大家分享到这里，如果大家在研究学习的过程当中有什么问题，可以加群进行讨论或发送邮件给我，我会尽我所能为您解答，与君共勉！
+
+
+
+
+
+
+
+
+
+
+开源实时日志分析ELK平台部署流程：
+
+（ 1 ）安装 Logstash 依赖包 JDK
+
+Logstash 的运行依赖于 Java 运行环境， Logstash 1.5 以上版本不低于 java 7 推荐使用最新版本的 Java 。由于我们只是运行 Java 程序，而不是开发，下载 JRE 即可。首先，在 Oracle 官方下载新版 jre ，下载地址： http://www.oracle.com/technetwork/java/javase/downloads/jre8-downloads-2133155.html
+
+
+可以看到提供了多种版本，下载时，选择适合自己机器运行环境的版本，我使用的是 RHEL6.5 x86_64 的操作系统，所以，下载 linux-64 的版本。如果使用 Linux 下载执行如下命令下载即可。
+
+#wget http://download.oracle.com/otn-pub/java/jdk/8u45-b14/jdk-8u45-linux-x64.tar.gz
+JDK 的安装方式比较简单，只需将下载回来的程序包解压到相应的目录即可。
+
+# mkdir /usr/local/java
+# tar -zxf jdk-8u45-linux-x64.tar.gz -C /usr/local/java/
+设置 JDK 的环境变量，如下：
+
+# tail -3 ~/.bash_profile
+export JAVA_HOME=/usr/local/java/jdk1.8.0_45
+export PATH=$PATH:$JAVA_HOME/bin
+exportCLASSPATH=.:$JAVA_HOME/lib/tools.jar:$JAVA_HOME/lib/dt.jar:$CLASSPATH
+在 Shell 提示符中执行 java �version 命令，显示如下结果，说明安装成功：
+
+# java -version
+java version "1.8.0_45"
+Java(TM) SE Runtime Environment (build 1.8.0_45-b14)
+Java HotSpot(TM) 64-Bit Server VM (build 25.45-b02,mixed mode)
+（ 2 ）安装 Logstash
+
+下载并安装 Logstash ，安装 logstash 只需将它解压的对应目录即可，例如： /usr/local 下：
+
+# https://download.elastic.co/logstash/logstash/logstash-1.5.2.tar.gz
+# tar �zxf logstash-1.5.2.tar.gz -C /usr/local/
+安装完成后运行如下命令：
+
+# /usr/local/logstash-1.5.2/bin/logstash -e 'input { stdin { } } output { stdout {} }'
+Logstash startup completed
+Hello World!
+2015-07-15T03:28:56.938Z noc.vfast.com Hello World!
+我们可以看到，我们输入什么内容logstash按照某种格式输出，其中-e参数参数允许Logstash直接通过命令行接受设置。这点尤其快速的帮助我们反复的测试配置是否正确而不用写配置文件。使用CTRL-C命令可以退出之前运行的Logstash。
+
+使用-e参数在命令行中指定配置是很常用的方式，不过如果需要配置更多设置则需要很长的内容。这种情况，我们首先创建一个简单的配置文件，并且指定logstash使用这个配置文件。 例如：在 logstash 安装目录下创建一个“基本配置”测试文件 logstash-test.conf， 文件内容如下：
+
+# cat logstash-simple.conf
+input { stdin { } }
+output {
+   stdout { codec=> rubydebug }
+}
+Logstash 使用 input 和 output 定义收集日志时的输入和输出的相关配置，本例中 input 定义了一个叫 "stdin" 的 input ， output 定义一个叫 "stdout" 的 output 。无论我们输入什么字符， Logstash 都会按照某种格式来返回我们输入的字符，其中 output 被定义为 "stdout" 并使用了 codec 参数来指定 logstash 输出格式。
+
+使用logstash的-f参数来读取配置文件，执行如下开始进行测试：
+
+# echo "`date`  hello World"
+Thu Jul 16 04:06:48 CST 2015 hello World
+# /usr/local/logstash-1.5.2/bin/logstash agent -f logstash-simple.conf
+Logstash startup completed
+Tue Jul 14 18:07:07 EDT 2015 hello World   #该行是执行echo “`date`hello World” 后输出的结果，直接粘贴到该位置
+{
+      "message" => "Tue Jul 14 18:07:07 EDT 2015 helloWorld",
+     "@version" => "1",
+   "@timestamp" => "2015-07-14T22:07:28.284Z",
+         "host" => "noc.vfast.com"
+}
+（ 3 ）安装 Elasticsearch
+
+下载 Elasticsearch 后，解压到对应的目录就完成 Elasticsearch 的安装。
+
+# tar -zxf elasticsearch-1.6.0.tar.gz -C /usr/local/
+启动 Elasticsearch
+
+# /usr/local/elasticsearch-1.6.0/bin/elasticsearch
+如果使用远程连接的 Linux 的方式并想后台运行 elasticsearch 执行如下命令：
+
+# nohup /usr/local/elasticsearch-1.6.0/bin/elasticsearch >nohup &
+确认 elasticsearch 的 9200 端口已监听，说明 elasticsearch 已成功运行
+
+# netstat -anp |grep :9200
+tcp        0      0 :::9200                     :::*                        LISTEN      3362/java
+接下来我们在 logstash 安装目录下创建一个用于测试 logstash 使用 elasticsearch 作为 logstash 的后端的测试文件 logstash-es-simple.conf，该文件中定义了stdout和elasticsearch作为output，这样的“多重输出”即保证输出结果显示到屏幕上，同时也输出到elastisearch中。
+
+# cat logstash-es-simple.conf
+input { stdin { } }
+output {
+   elasticsearch {host => "localhost" }
+   stdout { codec=> rubydebug }
+}
+执行如下命令
+
+# /usr/local/logstash-1.5.2/bin/logstash agent -f logstash-es-simple.conf
+… …
+Logstash startup completed
+hello logstash
+{
+      "message" => "hello logstash",
+     "@version" => "1",
+   "@timestamp" => "2015-07-15T18:12:00.450Z",
+         "host" => "noc.vfast.com"
+}
+我们可以使用 curl 命令发送请求来查看 ES 是否接收到了数据：
+
+# curl 'http://localhost:9200/_search?pretty'
+返回结果
+{
+  "took": 58,
+ "timed_out" : false,
+ "_shards" : {
+   "total" : 5,
+   "successful" : 5,
+   "failed" : 0
+  },
+  "hits": {
+   "total" : 1,
+   "max_score" : 1.0,
+   "hits" : [ {
+     "_index" : "logstash-2015.07.15",
+     "_type" : "logs",
+     "_id" : "AU6TWiixxDXYhySMyTkP",
+     "_score" : 1.0,
+     "_source":{"message":"hellologstash","@version":"1","@timestamp":"2015-07-15T20:13:55.199Z","host":"noc.vfast.com"}
+    } ]
+  }
+}
+至此，你已经成功利用 Elasticsearch 和 Logstash 来收集日志数据了。
+
+（ 4 ）安装 elasticsearch 插件
+
+Elasticsearch-kopf 插件可以查询 Elasticsearch 中的数据，安装 elasticsearch-kopf ，只要在你安装 Elasticsearch 的目录中执行以下命令即可：
+
+# cd /usr/local/elasticsearch-1.6.0/
+# ./plugin -install lmenezes/elasticsearch-kopf
+安装完成后在 plugins 目录下可以看到 kopf
+
+# ls plugins/
+kopf
+在浏览器访问 http://10.1.1.188:9200/_plugin/kopf 浏览保存在 Elasticsearch 中的数据，如下所示：
+
+
+（ 5 ）安装 Kibana
+
+下载 kibana 后，解压到对应的目录就完成 kibana 的安装
+
+# tar -zxf kibana-4.1.1-linux-x64.tar.gz -C /usr/local/
+启动 kibana
+
+# /usr/local/kibana-4.1.1-linux-x64/bin/kibana
+使用 http://kibanaServerIP ： 5601 访问 Kibana ，登录后，首先，配置一个索引，默认， Kibana 的数据被指向 Elasticsearch ，使用默认的 logstash-* 的索引名称，并且是基于时间的，点击“ Create ”即可。 
+看到如下界面说明索引创建完成。
+
+
+点击“ Discover ”，可以搜索和浏览 Elasticsearch 中的数据，默认搜索的是最近 15 分钟的数据。可以自定义选择时间。
+
+到此，说明你的 ELK 平台安装部署完成。
+
+（ 6 ）配置 logstash 作为 Indexer
+
+将 logstash 配置为索引器，并将 logstash 的日志数据存储到 Elasticsearch ，本范例主要是索引本地系统日志。
+
+# cat /usr/local/logstash-1.5.2/logstash-indexer.conf
+input {
+  file {
+    type =>"syslog"
+     path => ["/var/log/messages", "/var/log/syslog" ]
+  }
+  syslog {
+    type =>"syslog"
+    port =>"5544"
+  }
+}
+output {
+  stdout { codec=> rubydebug }
+  elasticsearch {host => "localhost" }
+}
+# /usr/local/logstash-1.5.2/bin/logstash -flogstash-indexer.conf
+使用 echo 命令模拟写入日志，命令执行后看到如下图的信息
+
+# echo "`date` 优衣库视频" >>/var/log/messages
+刷新 kibana ，发现最新的测试数据显示到浏览器中，如下图所示：
+
+到此， ELK 平台部署和基本的测试已完成。
+

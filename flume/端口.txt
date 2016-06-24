@@ -1,0 +1,9 @@
+flume master启动时监听的端口：
+35871：flume web服务监听端口
+2011-11-22 00:40:00,261 [main] INFO mortbay.log: Started SelectChannelConnector@0.0.0.0:35871
+35872：control server监听端口，主要用于ClientServerThrift
+2011-11-22 00:40:00,311 [main] INFO master.MasterClientServerThrift: Starting blocking thread pool server for control server on port 35872...
+35873：admin server监听端口，主要用于AdminServerThrift
+2011-11-22 00:40:00,369 [main] INFO master.MasterAdminServerThrift: Starting blocking thread pool server for admin server on port 35873...
+45678：ReportServer服务监听端口，主要用于心跳
+2011-11-22 00:40:00,392 [main] INFO server.ThriftReportServer: ReportServer started on port 45678

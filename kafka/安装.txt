@@ -1,0 +1,53 @@
+wget -q http://mirrors.cnnic.cn/apache/kafka/0.9.0.1/kafka_2.11-0.9.0.1.tgz  
+tar -xzvf kafka_2.11-0.9.0.1.tgz  
+rm kafka_2.11-0.9.0.1.tgz  
+cd kafka_2.11-0.9.0.1
+
+/bin 启动和停止命令等。 
+/config 配置文件 
+/libs 类库 
+
+3. 启动和停止 
+
+
+cd kafka_2.11-0.9.0.1
+
+
+#启动Zookeeper server： 
+./kafka/bin/zookeeper-server-start.sh zookeeper_2181.properties &  
+./kafka/bin/zookeeper-server-start.sh zookeeper_3181.properties &  
+
+#&是为了能退出命令行 
+
+#启动Kafka server: 
+./kafka/bin/kafka-server-start.sh server_9092_2181.properties &  
+./kafka/bin/kafka-server-start.sh server_9093_3181.properties &  
+
+
+停止Kafka server 
+bin/kafka-server-stop.sh  
+
+停止Zookeeper server: 
+bin/zookeeper-server-stop.sh 
+
+
+
+
+
+
+集群修改内容
+##server.properties修改
+broker.id=0
+listeners=PLAINTEXT://:9092
+port=9092
+log.dirs=/tmp/kafka-logs/9092
+zookeeper.connect=localhost:2181
+##zookeeper.properties修改
+dataDir=/tmp/zookeeper/2181
+clientPort=2181
+
+
+
+
+
+

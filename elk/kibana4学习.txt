@@ -1,0 +1,2585 @@
+Kibana4
+
+Kibana4 是 Elastic.co 一次崭新的重构产品。在操作界面上，有一定程度的对 Splunk 的模仿。为了更直观的体现 Kibana4 跟 Kibana3 的不同，先让我们看看 Kibana4 要怎么用来探索和展示数据。
+配置索引模式后，默认打开 Kibana4 会出现在一个叫做 Discover 的标签页，在这个类似 Kibana3 的 logstash dashboard 的页面上，我们可以提交搜索请求，过滤结果，然后检查返回的文档里的数据。如下图示：
+
+
+默认情况下，Discover 页会显示匹配搜索条件的前 500 个文档，页面下拉到底部，会自动加载后续数据。你可以修改时间过滤器，拖拽直方图下钻数据，查看部分文档的细节。Discover 页上如何探索数据，详细说明见 Discover 功能。
+Visualization 标签页用来为你的搜索结果构造可视化。每个可视化都是跟一个搜索关联着的。比如，我们可以基于前面那个搜索创建一个展示区间计数的饼图。而添加一个子聚合，我们还可以看到每个区间内排名前五的年龄。
+
+
+还可以保存并分析可视化结果，然后合并到 Dashboard 标签页上以便对比分析。比如说，我们可以创建一个展示多个可视化数据的仪表板：
+
+
+更多关于创建和分享可视化和仪表板的内容，请阅读 Visualize 和 Dashboard 章节。+
+
+
+
+安排、配置和运行
+
+Kibana4 安装方式依然简单，你可以在几分钟内安装好 Kibana 然后开始探索你的 Elasticsearch 索引。只需要预备：
+Elasticsearch 1.4.4 或者更新的版本
+一个现代浏览器 - 支持的浏览器列表.
+有关你的 Elasticsearch 集群的信息：
+你想要连接 Elasticsearch 实例的 URL
+你想搜索哪些 Elasticsearch 索引
+如果你的 Elasticsearch 是被 Shield 保护着的，阅读生产环境部署章节相关内容学习额外的安装说明。
+安装并启动 kibana
+
+要安装启动 Kibana:
+下载对应平台的 Kibana 4 二进制包
+解压 .zip 或 tar.gz 压缩文件
+在安装目录里运行: bin/kibana (Linux/MacOSX) 或 bin\kibana.bat (Windows)
+完毕！Kibana 现在运行在 5601 端口了。
+让 kibana 连接到 elasticsearch
+
+在开始用 Kibana 之前，你需要告诉它你打算探索哪个 Elasticsearch 索引。第一次访问 Kibana 的时候，你会被要求定义一个 index pattern 用来匹配一个或者多个索引名。好了。这就是你需要做的全部工作。以后你还可以随时从 Settings 标签页添加更多的 index pattern。
+默认情况下，Kibana 会连接运行在 localhost 的 Elasticsearch。要连接其他 Elasticsearch 实例，修改 kibana.yml 里的 Elasticsearch URL，然后重启 Kibana。如何在生产环境下使用 Kibana，阅读生产环境部署章节。
+要从 Kibana 访问的 Elasticsearch 索引的配置方法：
+从浏览器访问 Kibana 界面。也就是说访问比如 localhost:5601 或者 http://YOURDOMAIN.com:5601。 
+指定一个可以匹配一个或者多个 Elasticsearch 索引的 index pattern 。默认情况下，Kibana 认为你要访问的是通过 Logstash 导入 Elasticsearch 的数据。这时候你可以用默认的 logstash-* 作为你的 index pattern。通配符(*) 匹配索引名中零到多个字符。如果你的 Elasticsearch 索引有其他命名约定，输入合适的 pattern。pattern 也开始是最简单的单个索引的名字。
+选择一个包含了时间戳的索引字段，可以用来做基于时间的处理。Kibana 会读取索引的映射，然后列出所有包含了时间戳的字段(译者注：实际是字段类型为 date 的字段，而不是“看起来像时间戳”的字段)。如果你的索引没有基于时间的数据，关闭 Index contains time-based events 参数。
+如果一个新索引是定期生成，而且索引名中带有时间戳，选择 Use event times to create index names 选项，然后再选择 Index pattern interval。这可以提高搜索性能，Kibana 会至搜索你指定的时间范围内的索引。在你用 Logstash 输出数据给 Elasticsearch 的情况下尤其有效。
+点击 Create 添加 index pattern。第一个被添加的 pattern 会自动被设置为默认值。如果你有多个 index pattern 的时候，你可以在 Settings > Indices 里设置具体哪个是默认值。
+好了。Kibana 现在连接上你的 Elasticsearch 数据了。Kibana 会显示匹配上的索引里的字段名的只读列表。
+开始探索你的数据！
+
+你可以开始下钻你的数据了：
+在 Discover 页搜索和浏览你的数据。
+在 Visualize 页转换数据成图表。
+在 Dashboard 页创建定制自己的仪表板。
+
+
+
+生产环境部署
+
+Kibana4 是是一个完整的 web 应用。使用时，你需要做的只是打开浏览器，然后输入你运行 Kibana 的机器地址然后加上端口号。比如说：localhost:5601 或者 http://YOURDOMAIN.com:5601。
+但是当你准备在生产环境使用 Kibana4 的时候，比起在本机运行，就需要多考虑一些问题：
+在哪运行 kibana
+是否需要加密 Kibana 出入的流量
+是否需要控制访问数据的权限
+Nginx 代理配置
+
+因为 Kibana4 不再是 Kibana3 那种纯静态文件的单页应用，所以其服务器端是需要消耗计算资源的。因此，如果用户较多，Kibana4 确实有可能需要进行多点部署，这时候，就需要用 Nginx 做一层代理了。
+和 Kibana3 相比，Kibana4 的 Nginx 代理配置倒是简单许多，因为所有流量都是统一配置的。下面是一段包含入口流量加密、简单权限控制的 Kibana4 代理配置：
+upstream kibana4 {
+    server 127.0.0.1:5601 fail_timeout=0;
+}
+server {
+    listen               *:80;
+    server_name          kibana_server;
+    access_log           /var/log/nginx/kibana.srv-log-dev.log;
+    error_log            /var/log/nginx/kibana.srv-log-dev.error.log;
+
+    ssl                  on;
+    ssl_certificate      /etc/nginx/ssl/all.crt;
+    ssl_certificate_key  /etc/nginx/ssl/server.key;
+
+    location / {
+        root   /var/www/kibana;
+        index  index.html  index.htm;
+    }
+
+    location ~ ^/kibana4/.* {
+        proxy_pass           http://kibana4;
+        rewrite              ^/kibana4/(.*)  /$1 break;
+        proxy_set_header     X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header     Host            $host;
+        auth_basic           "Restricted";
+        auth_basic_user_file /etc/nginx/conf.d/kibana.myhost.org.htpasswd;
+    }
+}
+如果用户够多，当然你可以单独跑一个 kibana4 集群，然后在 upstream 配置段中添加多个代理地址做负载均衡。
+配置 Kibana 和 shield 一起工作
+
+Nginx 只能加密和管理浏览器到服务器端的请求，而 Kibana4 到 ELasticsearch 集群的请求，就需要由 Elasticsearch 方面来完成了。如果你在用 Shield 做 Elasticsearch 用户认证，你需要给 Kibana 提供用户凭证，这样它才能访问 .kibana 索引。Kibana 用户需要由权限访问 .kibana 索引里以下操作：
+'.kibana':
+      - indices:admin/create
+      - indices:admin/exists
+      - indices:admin/mapping/put
+      - indices:admin/mappings/fields/get
+      - indices:admin/refresh
+      - indices:admin/validate/query
+      - indices:data/read/get
+      - indices:data/read/mget
+      - indices:data/read/search
+      - indices:data/write/delete
+      - indices:data/write/index
+      - indices:data/write/update
+      - indices:admin/create
+更多配置 Shield 的内容，请阅读官网的 Shield with Kibana 4。
+要配置 Kibana 的凭证，设置 kibana.yml 里的 kibana_elasticsearch_username 和 kibana_elasticsearch_password 选项即可：
+# If your Elasticsearch is protected with basic auth:
+kibana_elasticsearch_username: kibana4
+kibana_elasticsearch_password: kibana4
+开启 ssl
+
+Kibana 同时支持对客户端请求以及 Kibana 服务器发往 Elasticsearch 的请求做 SSL 加密。
+要加密浏览器(或者在 Nginx 代理情况下，Nginx 服务器)到 Kibana 服务器之间的通信，配置 kibana.yml 里的 ssl_key_file 和 ssl_cert_file 参数：
+# SSL for outgoing requests from the Kibana Server (PEM formatted)
+ssl_key_file: /path/to/your/server.key
+ssl_cert_file: /path/to/your/server.crt
+如果你在用 Shield 或者其他提供 HTTPS 的代理服务器保护 Elasticsearch，你可以配置 Kibana 通过 HTTPS 方式访问 Elasticsearch，这样 Kibana 服务器和 Elasticsearch 之间的通信也是加密的。
+要做到这点，你需要在 kibana.yml 里配置 Elasticsearch 的 URL 时指明是 HTTPS 协议：
+elasticsearch: "https://<your_elasticsearch_host>.com:9200"
+如果你给 Elasticsearch 用的是自己签名的证书，请在 kibana.yml 里设定 ca 参数指明 PEM 文件位置，这也意味着开启了 verify_ssl 参数：
+# If you need to provide a CA certificate for your Elasticsarech instance, put
+# the path of the pem file here.
+ca: /path/to/your/ca/cacert.pem
+控制访问权限
+
+你可以用 Elasticsearch Shield 来控制用户通过 Kibana 可以访问到的 Elasticsearch 数据。Shield 提供了索引级别的访问控制。如果一个用户没被许可运行这个请求，那么它在 Kibana 可视化界面上只能看到一个空白。
+要配置 Kibana 使用 Shield，你要位 Kibana 创建一个或者多个 Shield 角色(role)，以 kibana4 作为开头的默认角色。更详细的做法，请阅读 Using Shield with Kibana 4。+
+
+
+
+discover 功能
+
+Discover 标签页用于交互式探索你的数据。你可以访问到匹配得上你选择的索引模式的每个索引的每条记录。你可以提交搜索请求，过滤搜索结果，然后查看文档数据。你还可以看到匹配搜索请求的文档总数，获取字段值的统计情况。如果索引模式配置了时间字段，文档的时序分布情况会在页面顶部以柱状图的形式展示出来。
+
+
+设置时间过滤器
+
+时间过滤器(Time Filter)限制搜索结果在一个特定的时间周期内。如果你的索引包含的是时序诗句，而且你为所选的索引模式配置了时间字段，那么就就可以设置时间过滤器。
+默认的时间过滤器设置为最近 15 分钟。你可以用页面顶部的时间选择器(Time Picker)来修改时间过滤器，或者选择一个特定的时间间隔，或者直方图的时间范围。
+要用时间选择器来修改时间过滤器：
+点击菜单栏右上角显示的 Time Filter 打开时间选择器。
+快速过滤，直接选择一个短链接即可。
+要指定相对时间过滤，点击 Relative 然后输入一个相对的开始时间。可以是任意数字的秒、分、小时、天、月甚至年之前。
+要指定绝对时间过滤，点击 Absolute 然后在 From 框内输入开始日期，To 框内输入结束日期。
+点击时间选择器底部的箭头隐藏选择器。
+要从住房图上设置时间过滤器，有以下几种方式：
+想要放大那个时间间隔，点击对应的柱体。
+单击并拖拽一个时间区域。注意需要等到光标变成加号，才意味着这是一个有效的起始点。
+你可以用浏览器的后退键来回退你的操作。
+搜索数据
+
+在 Discover 页提交一个搜索，你就可以搜索匹配当前索引模式的索引数据了。你可以直接输入简单的请求字符串，也就是用 Lucene query syntax，也可以用完整的基于 JSON 的 Elasticsearch Query DSL。
+当你提交搜索的时候，直方图，文档表格，字段列表，都会自动反映成搜索的结果。hits(匹配的文档)总数会在直方图的右上角显示。文档表格显示前 500 个匹配文档。默认的，文档倒序排列，最新的文档最先显示。你可以通过点击时间列的头部来反转排序。事实上，所有建了索引的字段，都可以用来排序，稍后会详细说明。
+要搜索你的数据：
+在搜索框内输入请求字符串：
+简单的文本搜索，直接输入文本字符串。比如，如果你在搜索网站服务器日志，你可以输入 safari 来搜索各字段中的 safari 单词。
+要搜索特定字段中的值，则在值前加上字段名。比如，你可以输入 status:200 来限制搜索结果都是在 status 字段里有 200 内容。
+要搜索一个值的范围，你可以用范围查询语法，[START_VALUE TO END_VALUE]。比如，要查找 4xx 的状态码，你可以输入 status:[400 TO 499]。
+要指定更复杂的搜索标准，你可以用布尔操作符 AND, OR, 和 NOT。比如，要查找 4xx 的状态码，还是 php 或 html 结尾的数据，你可以输入 status:[400 TO 499] AND (extension:php OR extension:html)。
+这些例子都用了 Lucene query syntax。你也可以提交 Elasticsearch Query DSL 式的请求。更多示例，参见之前 Elasticsearch 章节。
+点击回车键，或者点击 Search 按钮提交你的搜索请求。
+开始一个新的搜索
+
+要清除当前搜索或开始一个新搜索，点击 Discover 工具栏的 New Search 按钮。
+
+
+保存搜索
+
+你可以在 Discover 页加载已保存的搜索，也可以用作 visualizations 的基础。保存一个搜索，意味着同时保存下了搜索请求字符串和当前选择的索引模式。
+要保存当前搜索：
+点击 Discover 工具栏的 Save Search 按钮 Save Search button。
+输入一个名称，点击 Save。
+加载一个已存搜索
+
+要加载一个已保存的搜索：
+点击 Discover 工具栏的 Load Search 按钮 Load Search button。
+选择你要加载的搜索。
+如果已保存的搜索关联到跟你当前选择的索引模式不一样的其他索引上，加载这个搜索也会切换当前的已选索引模式。
+改变你搜索的索引
+
+当你提交一个搜索请求，匹配当前的已选索引模式的索引都会被搜索。当前模式模式会显示在搜索栏下方。要改变搜索的索引，需要选择另外的模式模式。
+要选择另外的索引模式：
+点击 Discover 工具栏的 Settings 按钮 Settings button。
+从索引模式列表中选取你打算采用的模式。
+关于索引模式的更多细节，请阅读稍后 Setting 功能小节。
+自动刷新页面
+
+亦可以配置一个刷新间隔来自动刷新 Discover 页面的最新索引数据。这回定期重新提交一次搜索请求。
+设置刷新间隔后，会显示在菜单栏时间过滤器的左边。
+要设置刷新间隔：
+点击菜单栏右上角的 Time Filter Time Filter。
+点击 Refresh Interval 标签。
+从列表中选择一个刷新间隔。
+要想自动刷新数据，点击 images/autorefresh.png Auto-refresh 按钮然后选择一个自动刷新间隔：
+images/autorefresh-intervals.png
+
+开启自动刷新后，Kibana 的顶部栏会出现一个暂停按钮和自动刷新的间隔：images/autorefresh-pause.png。点击 Pause 按钮可以暂停自动刷新。
+按字段过滤
+
+你可以过滤搜索结果，只显示在某字段中包含了特定值的文档。也可以创建反向过滤器，排除掉包含特定字段值的文档。
+你可以从字段列表或者文档表格里添加过滤器。当你添加好一个过滤器后，它会显示在搜索请求下方的过滤栏里。从过滤栏里你可以编辑或者关闭一个过滤器，转换过滤器(从正向改成反向，反之亦然)，切换过滤器开关，或者完全移除掉它。
+要从字段列表添加过滤器：
+点击你想要过滤的字段名。会显示这个字段的前 5 名数据。每个数据的右侧，有两个小按钮 —— 一个用来添加常规(正向)过滤器，一个用来添加反向过滤器。
+要添加正向过滤器，点击 Positive Filter 按钮 Positive Filter Button。这个会过滤掉在本字段不包含这个数据的文档。
+要添加反向过滤器，点击 Negative Filter 按钮 Negative Filter Button。这个会过滤掉在本字段包含这个数据的文档。
+要从文档表格添加过滤器：
+点击表格第一列(通常都是时间)文档内容左侧的 Expand 按钮 Expand Button 展开文档表格中的文档。每个字段名的右侧，有两个小按钮 —— 一个用来添加常规(正向)过滤器，一个用来添加反向过滤器。
+要添加正向过滤器，点击 Positive Filter 按钮 Positive Filter Button。这个会过滤掉在本字段不包含这个数据的文档。
+要添加反向过滤器，点击 Negative Filter 按钮 Negative Filter Button。这个会过滤掉在本字段包含这个数据的文档。
+过滤器(Filter)的协同工作方式
+
+在 Kibana 的任意页面创建过滤器后，就会在搜索输入框的下方，出现一个绿色椭圆形的过滤条件：
+
+
+鼠标移动到过滤条件上，会显示下面几个图标：
+images/filter-allbuttons.png
+
+过滤器开关 images/filter-enable.png 点击这个图标，可以在不移除过滤器的情况下关闭过滤条件。再次点击则重新打开。被禁用的过滤器是条纹状的灰色，要求包含(相当于 Kibana3 里的 must)的过滤条件显示为绿色，要求排除(相当于 Kibana3 里的 mustNot)的过滤条件显示为红色。
+过滤器图钉 images/filter-pin.png 点击这个图标钉住过滤器。被钉住的过滤器，可以横贯 Kibana 各个标签生效。比如在 Visualize 标签页钉住一个过滤器，然后切换到 Discover 或者 Dashboard 标签页，过滤器依然还在。注意：如果你钉住了过滤器，然后发现检索结果为空，注意查看当前标签页的索引模式是不是跟过滤器匹配。
+过滤器反转 images/filter-toggle.png 点击这个图标反转过滤器。默认情况下，过滤器都是包含型，显示为绿色，只有匹配过滤条件的结果才会显示。反转成排除型过滤器后，显示的是不匹配过滤器的检索项，显示为红色。
+移除过滤器 images/filter-delete.png 点击这个图标删除过滤器。
+自定义过滤器  点击这个图标会打开一个文本编辑框。编辑框内可以修改 JSON 形式的过滤器内容，并起一个 alias 别名： JSON 中可以灵活应用 bool query 组合各种 should、must、must_not 条件。一个用 should 表达的 OR 关系过滤如下:
+{
+  "bool": {
+      "should": [
+          {
+              "term": {
+                  "geoip.country_name.raw": "Canada"
+              }
+          },
+          {
+              "term": {
+                  "geoip.country_name.raw": "China"
+              }
+          }
+      ]
+  }
+}
+想要对当前页所有过滤器统一执行上面的某个操作，点击 images/filter-actions.png Global Filter Actions 按钮，然后再执行操作即可。
+查看文档数据
+
+当你提交一个搜索请求，最近的 500 个搜索结果会显示在文档表格里。你可以在 Advanced Settings 里通过 discover:sampleSize 属性配置表格里具体的文档数量。默认的，表格会显示当前选择的索引模式中定义的时间字段内容(转换成本地时区)以及 _source 文档。你可以从字段列表添加字段到文档表格。还可以用表格里包含的任意已建索引的字段来排序列出的文档。
+要查看一个文档的字段数据，点击表格第一列(通常都是时间)文档内容左侧的 Expand 按钮 Expand Button。Kibana 从 Elasticsearch 读取数据然后在表格中显示文档字段。这个表格每行是一个字段的名字、过滤器按钮和字段的值。
+
+
+要查看原始 JSON 文档(格式美化过的)，点击 JSON 标签。
+要在单独的页面上查看文档内容，点击链接。你可以添加书签或者分享这个链接，以直接访问这条特定文档。
+收回文档细节，点击 Collapse 按钮 Collapse Button。
+To toggle a particular field’s column in the Documents table, click the Add Column Toggle column in table button.
+文档列表排序
+
+你可以用任意已建索引的字段排序文档表格中的数据。如果当前索引模式配置了时间字段，默认会使用该字段倒序排列文档。
+要改变排序方式：
+点击想要用来排序的字段名。能用来排序的字段在字段名右侧都有一个排序按钮。再次点击字段名，就会反向调整排序方式。
+给文档表格添加字段列
+
+By default, the Documents table shows the localized version of the time field specified in the selected index pattern and the document _source. You can add fields to the table from the Fields list. 默认的，文档表格会显示当前选择的索引模式中定义的时间字段内容(转换成本地时区)以及 _source 文档。你可以从字段列表添加字段到文档表格。
+要添加字段列到文档表格：
+移动鼠标到字段列表的字段上，点击它的 add 按钮 Add Field Button。
+重复操作直到你添加完所有你想移除的字段。
+添加的字段会替换掉文档表格里的 _source 列。同时还会显示在字段列表顶部的 Selected Fields 区域里。
+要重排表格中的字段列，移动鼠标到你要移动的列顶部，点击移动过按钮。
+
+
+从文档表格删除字段列
+
+要从文档表格删除字段列：
+移动鼠标到字段列表的 Selected Fields 区域里你想要移除的字段上，然后点击它的 remove 按钮 Remove Field Button。
+重复操作直到你移除完所有你想移除的字段。
+查看字段数据统计
+
+从字段列表，你可以看到文档表格里有多少数据包含了这个字段，排名前 5 的值是什么，以及包含各个值的文档的占比。
+要查看字段数据统计：
+点击字段列表里一个字段的名字。这个字段可以在字段列表的任意位置 —— 已选字段(Selected Fields)，常用字段(Popular Fields)，或其他字段。
+
+
+要基于这个字段创建可视化，点击字段统计下方的 Visualize 按钮。+
+
+
+
+各 Visualize 功能
+
+Visualize 标签页用来设计可视化。你可以保存可视化，以后再用，或者加载合并到 dashboard 里。一个可视化可以基于以下几种数据源类型：
+一个新的交互式搜索
+一个已保存的搜索
+一个已保存的可视化
+可视化是基于 Elasticsearch 1.0 引入的聚合(aggregation) 特性。
+创建一个新可视化
+
+要开始一个 New Visualization 向导，点击页面左上角的 Visualize 标签。如果你已经在创建一个可视化了。你可以在搜索栏的右侧工具栏里点击 New Visualization 按钮 New Document button 向导会引导你继续以下几步：
+第 1 步: 选择可视化类型
+
+在 New Visualization 向导起始页可以选择以下一个可视化类型：
+|------------------|:-------------------------------------------------------------------------| |Area chart |用区块图来可视化多个不同序列的总体贡献。 | |Data table |用数据表来显示聚合的原始数据。其他可视化可以通过点击底部的方式显示数据表。| |Line chart |用折线图来比较不同序列。 | |Markdown widget |用 Markdown 显示自定义格式的信息或和你仪表盘有关的用法说明。 | |Metric |用指标可视化在你仪表盘上显示单个数字。 | |Pie chart |用饼图来显示每个来源对总体的贡献。 | |Tile map |用瓦片地图将聚合结果和经纬度联系起来。 | |Vertical bar chart|用垂直条形图作为一个通用图形。 |
+你也可以加载一个你之前创建好保存下来的可视化。已存可视化选择器包括一个文本框用来过滤可视化名称，以及一个指向 对象编辑器(Object Editor) 的链接，可以通过 Settings > Edit Saved Objects 来管理已存的可视化。
+如果你的新可视化是一个 Markdown 挂件，选择这个类型会带你到一个文本内容框，你可以在框内输入打算显示在挂件里的文本。其他的可视化类型，选择后都会转到数据源选择。
+第 2 步: 选择数据源
+
+你可以选择新建或者读取一个已保存的搜索，作为你可视化的数据源。搜索是和一个或者一系列索引相关联的。如果你选择了在一个配置了多个索引的系统上开始你的新搜索，从可视化编辑器的下拉菜单里选择一个索引模式。
+当你从一个已保存的搜索开始创建并保存好了可视化，这个搜索就绑定在这个可视化上。如果你修改了搜索，对应的可视化也会自动更新。
+第 3 步: 可视化编辑器
+
+The visualization editor enables you to configure and edit visualizations. The visualization editor has the following main elements: 可视化编辑器用来配置编辑可视化。它有下面几个主要元素：
+工具栏(Toolbar)
+聚合构建器(Aggregation Builder)
+预览画布(Preview Canvas)
+images/VizEditor.jpg
+
+工具栏
+
+工具栏上有一个用户交互式数据搜索的搜索框，用来保存和加载可视化。因为可视化是基于保存好的搜索，搜索栏会变成灰色。要编辑搜索，双击搜索框，用编辑后的版本替换已保存搜索。
+搜索框右侧的工具栏有一系列按钮，用于创建新可视化，保存当前可视化，加载一个已有可视化，分享或内嵌可视化，和刷新当前可视化的数据。
+聚合构建器
+
+用页面左侧的聚合构建器配置你的可视化要用的 metric 和 bucket 聚合。桶(Buckets) 的效果类似于 SQL GROUP BY 语句。想更详细的了解聚合，阅读 Elasticsearch aggregations reference。
+在条带图或者折线图可视化里，用 metrics 做 Y 轴，然后 buckets 做 X 轴，条带颜色，以及行/列的区分。在饼图里，metrics 用来做分片的大小，buckets 做分片的数量。
+为你的可视化 Y 轴选一个 metric 聚合，包括 count, average, sum, min, max, or cardinality (unique count). 为你的可视化 X 轴，条带颜色，以及行/列的区分选一个 bucket 聚合，常见的有 date histogram, range, terms, filters, 和 significant terms。
+你可以设置 buckets 执行的顺序。在 Elasticsearch 里，第一个聚合决定了后续聚合的数据集。下面例子演示一个网页访问量前五名的文件后缀名统计的时间条带图。
+要看所有相同后缀名的，设置顺序如下：
+Color: 后缀名的 Terms 聚合
+X-Axis: @timestamp 的时间条带图
+Elasticsearch 收集记录，算出前 5 名后缀名，然后为每个后缀名创建一个时间条带图。
+要看每个小时的前 5 名后缀名情况，设置顺序如下：
+X-Axis: @timestamp 的时间条带图( 1 小时间隔)
+Color: 后缀名的 Terms 聚合
+这次，Elasticsearch 会从所有记录里创建一个时间条带图，然后在每个桶内，分组(本例中就是一个小时的间隔)计算出前 5 名的后缀名。
+记住，每个后续的桶，都是从前一个的桶里分割数据。
+要在预览画布(preview canvas)上渲染可视化，点击聚合构建器底部的 Apply 按钮。
+预览画布(canvas)
+
+预览 canvas 上显示你定义在聚合构建器里的可视化的预览效果。要刷新可视化预览，点击工具栏里的 Refresh 按钮 Refresh button。+
+
+
+
+
+区块图
+
+这个图的 Y 轴是数值维度。该维度有以下聚合可用：
+Count count 聚合返回选中索引模式中元素的原始计数。
+Average 这个聚合返回一个数值字段的 average 。从下拉菜单选择一个字段。
+Sum sum 聚合返回一个数值字段的总和。从下拉菜单选择一个字段。
+Min min 聚合返回一个数值字段的最小值。从下拉菜单选择一个字段。
+Max max 聚合返回一个数值字段的最大值。从下拉菜单选择一个字段。
+Unique Count cardinality 聚合返回一个字段的去重数据值。从下拉菜单选择一个字段。
+Standard Deviation extended stats 聚合返回一个数值字段数据的标准差。从下拉菜单选择一个字段。
+Percentile percentile 聚合返回一个数值字段中值的百分比分布。从下拉菜单选择一个字段，然后在 Percentiles 框内指定范围。点击 X 移除一个百分比框，点击 +Add 添加一个百分比框。
+Percentile Rank percentile ranks 聚合返回一个数值字段中你指定值的百分位排名。从下拉菜单选择一个字段，然后在 Values 框内指定一到多个百分位排名值。点击 X 移除一个百分比框，点击 +Add 添加一个数值框。
+你可以点击 + Add Aggregation 按键添加一个聚合。
+buckets 聚合指明从你的数据集中将要检索什么信息。
+图形的 X 轴是buckets 维度。你可以为 X 轴定义 buckets，同样还可以为图片上的分片区域，或者分割的图片定义 buckets。
+该图形的 X 轴支持以下聚合。点击每个聚合的链接查看该聚合的 Elasticsearch 官方文档。
+Date Histogram date histogram 基于数值字段创建，由时间组织起来。你可以指定时间片的间隔，单位包括秒，分，小时，天，星期，月，年。
+Histogram 标准 histogram 基于数值字段创建。为这个字段指定一个整数间隔。勾选 Show empty buckets 让直方图中包含空的间隔。
+Range 通过 range 聚合。你可以为一个数值字段指定一系列区间。点击 Add Range 添加一对区间端点。点击红色 (x) 符号移除一个区间。
+Date Range date range 聚合计算你指定的时间区间内的值。你可以使用 date math 表达式指定区间。点击 Add Range 添加新的区间端点。点击红色 (/) 符号移除区间。
+IPv4 Range IPv4 range 聚合用来指定 IPv4 地址的区间。点击 Add Range 添加新的区间端点。点击红色 (/) 符号移除区间。
+Terms terms 聚合允许你指定展示一个字段的首尾几个元素，排序方式可以是计数或者其他自定义的metric。
+Filters 你可以为数据指定一组 filters。你可以用 query string，也可以用 JSON 格式来指定过滤器，就像在 Discover 页的搜索栏里一样。点击 Add Filter 添加下一个过滤器。
+Significant Terms 展示实验性的 significant terms 聚合的结果。
+一旦你定义好了一个 X 轴聚合。你可以继续定义子聚合来完善可视化效果。点击 + Add Sub Aggregation 添加子聚合，然后选择 Split Area 或者 Split Chart，然后从类型菜单中选择一个子聚合。
+当一个图形中定义了多个聚合，你可以使用聚合类型右侧的上下箭头来改变聚合的优先级。比如，一个事件计数的日期图，可以按照时序显示，你也可以提升事件聚合的优先级，首先显示最活跃的几天。时序图用来显示事件随着时间变化的趋势，而按照活跃时间排序则可以揭示你数据中的部分异常值。
+你可以点击 Advanced 链接显示更多有关聚合的自定义参数：
+Exclude Pattern 指定一个从结果集中排除掉的模式。
+Exclude Pattern Flags 排除模式的 Java flags 标准集。
+Include Pattern 指定一个从结果集中要包含的模式。
+Include Pattern Flags 包含模式的 Java flags 标准集。
+JSON Input 一个用来添加 JSON 格式属性的文本框，内容会合并进聚合的定义中，格式如下例：
+{ "script" : "doc['grade'].value * 1.2" }
+注意
+
+Elasticsearch 1.4.3 及以后版本，这个函数需要你开启 dynamic Groovy scripting。
+这些参数是否可用，依赖于你选择的聚合函数。
+选择 view options 更改表格中如下方面：
+Chart Mode 当你为图形定义了多个 Y 轴时，你可以用该下拉菜单定义聚合如何显示在图形上：
+stacked 聚合结果依次叠加在顶部。
+overlap 聚合结果重叠的地方采用半透明效果。
+wiggle 聚合结果显示成 streamgraph 效果。
+percentage 显示每个聚合在总数中的百分值。
+silhouette 显示每个聚合距离中间线的方差。
+多选框可以用来控制以下行为：
+Smooth Lines 勾选该项平滑数据点之间的折线成曲线。
+Set Y-Axis Extents 勾选该项，然后在 y-max 和 y-min 框里输入数值限定 Y 轴为指定数值。
+Scale Y-Axis to Data Bounds 默认的 Y 轴长度为 0 到数据集的最大值。勾选该项改变 Y 轴的最大和最小值为数据集的返回值。
+Show Tooltip 勾选该项显示工具栏。
+Show Legend 勾选该项在图形右侧显示图例。
+
+
+
+
+数据表格
+
+Count count 聚合返回选中索引模式中元素的原始计数。
+Average 这个聚合返回一个数值字段的 average 。从下拉菜单选择一个字段。
+Sum sum 聚合返回一个数值字段的总和。从下拉菜单选择一个字段。
+Min min 聚合返回一个数值字段的最小值。从下拉菜单选择一个字段。
+Max max 聚合返回一个数值字段的最大值。从下拉菜单选择一个字段。
+Unique Count cardinality 聚合返回一个字段的去重数据值。从下拉菜单选择一个字段。
+Standard Deviation extended stats 聚合返回一个数值字段数据的标准差。从下拉菜单选择一个字段。
+Percentile percentile 聚合返回一个数值字段中值的百分比分布。从下拉菜单选择一个字段，然后在 Percentiles 框内指定范围。点击 X 移除一个百分比框，点击 + Add Percent 添加一个百分比框。
+Percentile Rank percentile ranks 聚合返回一个数值字段中你指定值的百分位排名。从下拉菜单选择一个字段，然后在 Values 框内指定一到多个百分位排名值。点击 X 移除一个百分比框，点击 +Add 添加一个数值框。
+你可以点击 + Add Aggregation 按键添加一个聚合。
+数据表格的每行，叫做 buckets。你可以定义 buckets 来切割表格成行，或者切割表格成另一个表格。
+每个 bucket 类型都支持以下聚合：
+Date Histogram date histogram 基于数值字段创建，由时间组织起来。你可以指定时间片的间隔，单位包括秒，分，小时，天，星期，月，年。
+Histogram 标准 histogram 基于数值字段创建。为这个字段指定一个整数间隔。勾选 Show empty buckets 让直方图中包含空的间隔。
+Range 通过 range 聚合。你可以为一个数值字段指定一系列区间。点击 Add Range 添加一堆区间端点。点击红色 (x) 符号移除一个区间。
+Date Range date range 聚合计算你指定的时间区间内的值。你可以使用 date math 表达式指定区间。点击 Add Range 添加新的区间端点。点击红色 (/) 符号移除区间。
+IPv4 Range IPv4 range 聚合用来指定 IPv4 地址的区间。点击 Add Range 添加新的区间端点。点击红色 (/) 符号移除区间。
+Terms terms 聚合允许你指定展示一个字段的首尾几个元素，排序方式可以是计数或者其他自定义的metric。
+Filters 你可以为数据指定一组 filters。你可以用 query string，也可以用 JSON 格式来指定过滤器，就像在 Discover 页的搜索栏里一样。点击 Add Filter 添加下一个过滤器。
+Significant Terms 展示实验性的 significant terms 聚合的结果。
+Geohash geohash 聚合显示基于地理坐标的点。
+一旦你定义好了一个 X 轴聚合。你可以继续定义子聚合来完善可视化效果。点击 + Add Sub Aggregation 添加子聚合，然后选择 Split Area 或者 Split Chart，然后从类型菜单中选择一个子聚合。
+当一个图形中定义了多个聚合，你可以使用聚合类型右侧的上下箭头来改变聚合的优先级。
+你可以点击 Advanced 链接显示更多有关聚合的自定义参数：
+Exclude Pattern 指定一个从结果集中排除掉的模式。
+Exclude Pattern Flags 排除模式的 Java flags 标准集。
+Include Pattern 指定一个从结果集中要包含的模式。
+Include Pattern Flags 包含模式的 Java flags 标准集。
+JSON Input 一个用来添加 JSON 格式属性的文本框，内容会合并进聚合的定义中，格式如下例：
+{ "script" : "doc['grade'].value * 1.2" }
+注意
+
+Elasticsearch 1.4.3 及以后版本，这个函数需要你开启 dynamic Groovy scripting。
+这些参数是否可用，依赖于你选择的聚合函数。
+选择 view options 更改表格中如下方面：
+Per Page 这个输入框控制表格的翻页。默认值是每页 10 行。
+多选框用来控制以下行为：
+Show metrics for every bucket/level 勾选此项用以显示每个 bucket 聚合的中间结果。
+Show partial rows 勾选此项显示没有数据的行。
+注意
+
+开启这些行为可能带来性能上的显著影响。+
+
+
+
+
+Lines Charts
+
+这个图的 Y 轴是数值维度。该维度有以下聚合可用：
+Count count 聚合返回选中索引模式中元素的原始计数。
+Average 这个聚合返回一个数值字段的 average 。从下拉菜单选择一个字段。
+Sum sum 聚合返回一个数值字段的总和。从下拉菜单选择一个字段。
+Min min 聚合返回一个数值字段的最小值。从下拉菜单选择一个字段。
+Max max 聚合返回一个数值字段的最大值。从下拉菜单选择一个字段。
+Unique Count cardinality 聚合返回一个字段的去重数据值。从下拉菜单选择一个字段。
+Standard Deviation extended stats 聚合返回一个数值字段数据的标准差。从下拉菜单选择一个字段。
+Percentile percentile 聚合返回一个数值字段中值的百分比分布。从下拉菜单选择一个字段，然后在 Percentiles 框内指定范围。点击 X 移除一个百分比框，点击 + Add Percent 添加一个百分比框。
+Percentile Rank percentile ranks 聚合返回一个数值字段中你指定值的百分位排名。从下拉菜单选择一个字段，然后在 Values 框内指定一到多个百分位排名值。点击 X 移除一个百分比框，点击 +Add 添加一个数值框。
+你可以点击 + Add Aggregation 按键添加一个聚合。
+buckets 聚合指明从你的数据集中将要检索什么信息。
+在你选定一个 buckets 聚合之前，先指定你是要切割单个图的分片，还是切割成多个图形。多图切分必须在其他任何聚合之前要运行。如果你切分图形，你可以选择切分结果是展示成行还是列的形式，点击 Rows | Columns 选择器即可。
+图形的 X 轴是buckets 维度。你可以为 X 轴定义 buckets，同样还可以为图片上的分片区域，或者分割的图片定义 buckets。
+该图形的 X 轴支持以下聚合。点击每个聚合的链接查看该聚合的 Elasticsearch 官方文档。
+Date Histogram date histogram 基于数值字段创建，由时间组织起来。你可以指定时间片的间隔，单位包括秒，分，小时，天，星期，月，年。
+Histogram 标准 histogram 基于数值字段创建。为这个字段指定一个整数间隔。勾选 Show empty buckets 让直方图中包含空的间隔。
+Range 通过 range 聚合。你可以为一个数值字段指定一系列区间。点击 Add Range 添加一堆区间端点。点击红色 (x) 符号移除一个区间。
+Date Range date range 聚合计算你指定的时间区间内的值。你可以使用 date math 表达式指定区间。点击 Add Range 添加新的区间端点。点击红色 (/) 符号移除区间。
+IPv4 Range IPv4 range 聚合用来指定 IPv4 地址的区间。点击 Add Range 添加新的区间端点。点击红色 (/) 符号移除区间。
+Terms terms 聚合允许你指定展示一个字段的首尾几个元素，排序方式可以是计数或者其他自定义的metric。
+Filters 你可以为数据指定一组 filters。你可以用 query string，也可以用 JSON 格式来指定过滤器，就像在 Discover 页的搜索栏里一样。点击 Add Filter 添加下一个过滤器。
+Significant Terms 展示实验性的 significant terms 聚合的结果。
+一旦你定义好了一个 X 轴聚合。你可以继续定义子聚合来完善可视化效果。点击 + Add Sub Aggregation 添加子聚合，然后选择 Split Area 或者 Split Chart，然后从类型菜单中选择一个子聚合。
+当一个图形中定义了多个聚合，你可以使用聚合类型右侧的上下箭头来改变聚合的优先级。
+你可以点击 Advanced 链接显示更多有关聚合的自定义参数：
+Exclude Pattern 指定一个从结果集中排除掉的模式。
+Exclude Pattern Flags 排除模式的 Java flags 标准集。
+Include Pattern 指定一个从结果集中要包含的模式。
+Include Pattern Flags 包含模式的 Java flags 标准集。
+JSON Input 一个用来添加 JSON 格式属性的文本框，内容会合并进聚合的定义中，格式如下例：
+{ "script" : "doc['grade'].value * 1.2" }
+注意
+
+Elasticsearch 1.4.3 及以后版本，这个函数需要你开启 dynamic Groovy scripting。
+这些参数是否可用，依赖于你选择的聚合函数。
+多选框可以用来控制以下行为：
+Y 轴比例 可以给图形的 Y 轴选择 linear, log 或 square root 三种比例。你可以给指数变化的数据采用 log 函数比例显示，比如复利图表；也可以用平方根(square root)比例显示数值变化差异极大的数据集。这种可变性本身也算变量的一种的数据，又叫异方差数据。比如，身高和体重的数据集，在较矮的区间变化是很小的，但是在较高另一个区间，数据集就是异方差式的。
+Smooth Lines 勾选该项，将图中的数据点用平滑曲线连接。注意：平滑曲线在高峰低谷处给人的印象与实际值有较大偏差。
+Show Connecting Lines 勾选该项，将图中的数据点用折线连接。
+Show Circles 勾选该项，将图中的数据点绘制成一个小圆圈。
+Current time marker 对时序数据，勾选该项可以在当前时刻位置标记一条红线。
+Set Y-Axis Extents 勾选该项，然后在 y-max 和 y-min 框里输入数值限定 Y 轴为指定数值。
+Show Tooltip 勾选该项显示工具栏。
+Show Legend 勾选该项在图形右侧显示图例。
+Scale Y-Axis to Data Bounds 默认的 Y 轴长度为 0 到数据集的最大值。勾选该项改变 Y 轴的最大和最小值为数据集的返回值。
+更新选项后，点击绿色 Apply changes 按钮更新你的可视化界面，或者灰色 Discard changes 按钮保持原状。
+气泡图(Bubble Charts)
+
+通过以下步骤，可以转换折线图成气泡图：
+为 Y 轴点击 Add Metrics 然后选择 Dot Size。
+从下拉框里选择一个 metric 聚合函数。
+在 Options 标签里，去掉 Show Connecting Lines 的勾选。
+点击 Apply changes 按钮。
+
+
+
+Markdown 挂件
+
+Markdown 挂件是一个存放 GitHub 风格 Markdown 内容的文本框。Kibana 会渲染你输入的文本，然后在仪表盘上显示渲染结果。你可以点击 Help 连接跳转到 help page 查看 GitHub 风格 Markdown 的说明。点击 Apply 在预览框查看渲染效果，或者 Discard 回退成上一个版本的内容。+
+
+
+
+Metric
+
+metric 可视化为你选择的聚合显示一个单独的数字：
+Count count 聚合返回选中索引模式中元素的原始计数。
+Average 这个聚合返回一个数值字段的 average 。从下拉菜单选择一个字段。
+Sum sum 聚合返回一个数值字段的总和。从下拉菜单选择一个字段。
+Min min 聚合返回一个数值字段的最小值。从下拉菜单选择一个字段。
+Max max 聚合返回一个数值字段的最大值。从下拉菜单选择一个字段。
+Unique Count cardinality 聚合返回一个字段的去重数据值。从下拉菜单选择一个字段。
+Standard Deviation extended stats 聚合返回一个数值字段数据的标准差。从下拉菜单选择一个字段。
+Percentile percentile 聚合返回一个数值字段中值的百分比分布。从下拉菜单选择一个字段，然后在 Percentiles 框内指定范围。点击 X 移除一个百分比框，点击 + Add Percent 添加一个百分比框。
+Percentile Rank percentile ranks 聚合返回一个数值字段中你指定值的百分位排名。从下拉菜单选择一个字段，然后在 Values 框内指定一到多个百分位排名值。点击 X 移除一个百分比框，点击 +Add 添加一个数值框。
+你可以点击 + Add Aggregation 按键添加一个聚合。你可以点击 Advanced 链接显示更多有关聚合的自定义参数：
+Exclude Pattern 指定一个从结果集中排除掉的模式。
+Exclude Pattern Flags 排除模式的 Java flags 标准集。
+Include Pattern 指定一个从结果集中要包含的模式。
+Include Pattern Flags 包含模式的 Java flags 标准集。
+JSON Input 一个用来添加 JSON 格式属性的文本框，内容会合并进聚合的定义中，格式如下例：
+{ "script" : "doc['grade'].value * 1.2" }
+注意
+
+Elasticsearch 1.4.3 及以后版本，这个函数需要你开启 dynamic Groovy scripting。
+这些参数是否可用，依赖于你选择的聚合函数。
+点击 view options 修改显示 metric 的字体大小。+
+
+
+饼图
+
+饼图的分片大小通过 metrics 聚合定义。这个维度可以支持以下聚合：
+Count count 聚合返回选中索引模式中元素的原始计数。
+Sum sum 聚合返回一个数值字段的总和。从下拉菜单选择一个字段。
+Unique Count cardinality 聚合返回一个字段的去重数据值。从下拉菜单选择一个字段。
+buckets 聚合指明从你的数据集中将要检索什么信息。
+在你选定一个 buckets 聚合之前，先指定你是要切割单个图的分片，还是切割成多个图形。多图切分必须在其他任何聚合之前要运行。如果你切分图形，你可以选择切分结果是展示成行还是列的形式，点击 Rows | Columns 选择器即可。
+你可以为你的饼图指定以下任意 bucket 聚合：
+Date Histogram date histogram 基于数值字段创建，由时间组织起来。你可以指定时间片的间隔，单位包括秒，分，小时，天，星期，月，年。
+Histogram 标准 histogram 基于数值字段创建。为这个字段指定一个整数间隔。勾选 Show empty buckets 让直方图中包含空的间隔。
+Range 通过 range 聚合。你可以为一个数值字段指定一系列区间。点击 Add Range 添加一堆区间端点。点击红色 (x) 符号移除一个区间。
+Date Range date range 聚合计算你指定的时间区间内的值。你可以使用 date math 表达式指定区间。点击 Add Range 添加新的区间端点。点击红色 (/) 符号移除区间。
+IPv4 Range IPv4 range 聚合用来指定 IPv4 地址的区间。点击 Add Range 添加新的区间端点。点击红色 (/) 符号移除区间。
+Terms terms 聚合允许你指定展示一个字段的首尾几个元素，排序方式可以是计数或者其他自定义的metric。
+Filters 你可以为数据指定一组 filters。你可以用 query string，也可以用 JSON 格式来指定过滤器，就像在 Discover 页的搜索栏里一样。点击 Add Filter 添加下一个过滤器。
+Significant Terms 展示实验性的 significant terms 聚合的结果。
+一旦你定义好了一个 X 轴聚合。你可以继续定义子聚合来完善可视化效果。点击 + Add Sub Aggregation 添加子聚合，然后选择 Split Area 或者 Split Chart，然后从类型菜单中选择一个子聚合。
+当一个图形中定义了多个聚合，你可以使用聚合类型右侧的上下箭头来改变聚合的优先级。
+你可以点击 Advanced 链接显示更多有关聚合的自定义参数：
+Exclude Pattern 指定一个从结果集中排除掉的模式。
+Exclude Pattern Flags 排除模式的 Java flags 标准集。
+Include Pattern 指定一个从结果集中要包含的模式。
+Include Pattern Flags 包含模式的 Java flags 标准集。
+JSON Input 一个用来添加 JSON 格式属性的文本框，内容会合并进聚合的定义中，格式如下例：
+{ "script" : "doc['grade'].value * 1.2" }
+注意
+
+Elasticsearch 1.4.3 及以后版本，这个函数需要你开启 dynamic Groovy scripting。
+这些参数是否可用，依赖于你选择的聚合函数。
+选择 view options 更改表格中如下方面：
+Donut Display the chart as a sliced ring instead of a sliced pie.
+Show Tooltip 勾选该项显示工具栏。
+Show Legend 勾选该项在图形右侧显示图例。
+
+
+瓦片地图
+
+瓦片地图显示一个由圆圈覆盖着的地理区域。这些圆圈则是由你指定的 buckets 控制的。
+瓦片地图的默认 metrics 聚合是 Count 聚合。你可以选择下列聚合中的任意一个作为 metrics 聚合：
+Count count 聚合返回选中索引模式中元素的原始计数。
+Average 这个聚合返回一个数值字段的 average 。从下拉菜单选择一个字段。
+Sum sum 聚合返回一个数值字段的总和。从下拉菜单选择一个字段。
+Min min 聚合返回一个数值字段的最小值。从下拉菜单选择一个字段。
+Max max 聚合返回一个数值字段的最大值。从下拉菜单选择一个字段。
+Unique Count cardinality 聚合返回一个字段的去重数据值。从下拉菜单选择一个字段。
+buckets 聚合指明从你的数据集中将要检索什么信息。
+在你选择 buckets 聚合前，指定你是打算分割图形，还是在单个图形上显示 buckets 为 Geo Coordinates。多图切割的聚合必须在最先运行。
+瓦片地图使用 Geohash 聚合作为他们的初始化聚合。从下拉菜单中选择一个坐标字段。Precision 滑动条设置圆圈在地图上显示的颗粒度大小。阅读 geohash grid 聚合的文档，了解每个精度级别的区域细节。Kibana 4.1 目前支持的最大 geohash 长度为 7。
+注意
+
+更高的精度意味着同时消耗了浏览器和 ES 集群更多的内存。
+一旦你定义好了一个 X 轴聚合。你可以继续定义子聚合来完善可视化效果。点击 + Add Sub Aggregation 添加子聚合，然后选择 Split Area 或者 Split Chart，然后从类型菜单中选择一个子聚合。
+Date Histogram date histogram 基于数值字段创建，由时间组织起来。你可以指定时间片的间隔，单位包括秒，分，小时，天，星期，月，年。
+Histogram 标准 histogram 基于数值字段创建。为这个字段指定一个整数间隔。勾选 Show empty buckets 让直方图中包含空的间隔。
+Range 通过 range 聚合。你可以为一个数值字段指定一系列区间。点击 Add Range 添加一堆区间端点。点击红色 (x) 符号移除一个区间。
+Date Range date range 聚合计算你指定的时间区间内的值。你可以使用 date math 表达式指定区间。点击 Add Range 添加新的区间端点。点击红色 (/) 符号移除区间。
+IPv4 Range IPv4 range 聚合用来指定 IPv4 地址的区间。点击 Add Range 添加新的区间端点。点击红色 (/) 符号移除区间。
+Terms terms 聚合允许你指定展示一个字段的首尾几个元素，排序方式可以是计数或者其他自定义的metric。
+Filters 你可以为数据指定一组 filters。你可以用 query string，也可以用 JSON 格式来指定过滤器，就像在 Discover 页的搜索栏里一样。点击 Add Filter 添加下一个过滤器。
+Significant Terms 展示实验性的 significant terms 聚合的结果。
+Geohash The geohash aggregation displays points based on the geohash coordinates.
+你可以点击 Advanced 链接显示更多有关聚合的自定义参数：
+Exclude Pattern 指定一个从结果集中排除掉的模式。
+Exclude Pattern Flags 排除模式的 Java flags 标准集。
+Include Pattern 指定一个从结果集中要包含的模式。
+Include Pattern Flags 包含模式的 Java flags 标准集。
+JSON Input 一个用来添加 JSON 格式属性的文本框，内容会合并进聚合的定义中，格式如下例：
+{ "script" : "doc['grade'].value * 1.2" }
+注意
+
+Elasticsearch 1.4.3 及以后版本，这个函数需要你开启 dynamic Groovy scripting。
+这些参数是否可用，依赖于你选择的聚合函数。
+选择 Options 改变表格的如下方面：
+Map type
+
+从下拉框选择下面一个选项。
+Shaded Circle Markers 根据 metric 聚合的值显示不同的颜色。
+Scaled Circle Markers 根据 metric 聚合的值显示不同的大小。
+Shaded Geohash Grid 用矩形替换默认的圆形显示 geohash，根据 metric 聚合的值显示不同的颜色。
+Heatmap 热力图可以模糊化圆标而且层叠显示颜色。热力图本身还有如下选项可用：
+Radius: 设置单个热力图点的大小。
+Blur: 设置热力图点的模糊度。
+Maximum zoom: Kibana 的 Tilemap 支持 18 级缩放。该选项设置热力图最大强度下的最高缩放级别。
+Minimum opacity: 设置数据点的不透明截止位置。
+Show Tooltip: 勾选该项，让鼠标放在数据点上时显示该点的数据。
+Desaturate map tiles
+
+淡化地图颜色，凸显标记的清晰度。
+WMS compliant map server
+
+勾选该项，可以配置使用符合 Web Map Service (WMS) 标准的其他第三方地图服务。需要指定一下参数：
+WMS url: WMS 地图服务的 URL；
+WMS layers: 用于可视化的图层列表，逗号分隔。每个地图服务商都会提供自己的图层。
+WMS version: 该服务商采用的 WMS 版本。
+WMS format: 该服务商使用的图片格式。通常来说是 image/png 或 image/jpeg。
+WMS attribution: 可选项。用户自定义字符串，用来显示在图表右下角的属性说明。
+WMS styles: 逗号分隔的风格列表。每个地图服务商都会提供自己的风格选项。
+更新选项后，点击绿色 Apply changes 按钮更新你的可视化界面，或者灰色 Discard changes 按钮保持原状。
+Navigating the Map
+
+可视化地图就绪后，你可以通过一下方式探索地图：
+在地图任意位置点击并按住鼠标后，拖动即可转移地图中心。按住鼠标左键拖拽绘制方框则可以放大选定区域。
+点击 Zoom In/Out images/viz-zoom.png 按钮手动修改缩放级别。
+点击 Fit Data Bounds images/viz-fit-bounds.png 按钮让地图自动聚焦到至少有一个数据点的地区。
+点击 Latitude/Longitude Filter images/viz-lat-long-filter.png 按钮，然后在地图上拖拽绘制一个方框，自动生成这个框范围的经纬度过滤器。
+
+
+
+
+竖条图
+
+这个图的 Y 轴是数值维度。该维度有以下聚合可用：
+Count count 聚合返回选中索引模式中元素的原始计数。
+Average 这个聚合返回一个数值字段的 average 。从下拉菜单选择一个字段。
+Sum sum 聚合返回一个数值字段的总和。从下拉菜单选择一个字段。
+Min min 聚合返回一个数值字段的最小值。从下拉菜单选择一个字段。
+Max max 聚合返回一个数值字段的最大值。从下拉菜单选择一个字段。
+Unique Count cardinality 聚合返回一个字段的去重数据值。从下拉菜单选择一个字段。
+Standard Deviation extended stats 聚合返回一个数值字段数据的标准差。从下拉菜单选择一个字段。
+Percentile percentile 聚合返回一个数值字段中值的百分比分布。从下拉菜单选择一个字段，然后在 Percentiles 框内指定范围。点击 X 移除一个百分比框，点击 + Add Percent 添加一个百分比框。
+你可以点击 + Add Aggregation 按键添加一个聚合。
+buckets 聚合指明从你的数据集中将要检索什么信息。
+在你选定一个 buckets 聚合之前，先指定你是要切割单个图的分片，还是切割成多个图形。多图切分必须在其他任何聚合之前要运行。如果你切分图形，你可以选择切分结果是展示成行还是列的形式，点击 Rows | Columns 选择器即可。
+图形的 X 轴是buckets 维度。你可以为 X 轴定义 buckets，同样还可以为图片上的分片区域，或者分割的图片定义 buckets。
+该图形的 X 轴支持以下聚合。点击每个聚合的链接查看该聚合的 Elasticsearch 官方文档。
+Date Histogram date histogram 基于数值字段创建，由时间组织起来。你可以指定时间片的间隔，单位包括秒，分，小时，天，星期，月，年。
+Histogram 标准 histogram 基于数值字段创建。为这个字段指定一个整数间隔。勾选 Show empty buckets 让直方图中包含空的间隔。
+Range 通过 range 聚合。你可以为一个数值字段指定一系列区间。点击 Add Range 添加一堆区间端点。点击红色 (x) 符号移除一个区间。
+Terms terms 聚合允许你指定展示一个字段的首尾几个元素，排序方式可以是计数或者其他自定义的metric。
+Filters 你可以为数据指定一组 filters。你可以用 query string，也可以用 JSON 格式来指定过滤器，就像在 Discover 页的搜索栏里一样。点击 Add Filter 添加下一个过滤器。
+Significant Terms 展示实验性的 significant terms 聚合的结果。
+一旦你定义好了一个 X 轴聚合。你可以继续定义子聚合来完善可视化效果。点击 + Add Sub Aggregation 添加子聚合，然后选择 Split Area 或者 Split Chart，然后从类型菜单中选择一个子聚合。
+当一个图形中定义了多个聚合，你可以使用聚合类型右侧的上下箭头来改变聚合的优先级。
+你可以点击 Advanced 链接显示更多有关聚合的自定义参数：
+Exclude Pattern 指定一个从结果集中排除掉的模式。
+Exclude Pattern Flags 排除模式的 Java flags 标准集。
+Include Pattern 指定一个从结果集中要包含的模式。
+Include Pattern Flags 包含模式的 Java flags 标准集。
+JSON Input 一个用来添加 JSON 格式属性的文本框，内容会合并进聚合的定义中，格式如下例：
+{ "script" : "doc['grade'].value * 1.2" }
+注意
+
+Elasticsearch 1.4.3 及以后版本，这个函数需要你开启 dynamic Groovy scripting。
+这些参数是否可用，依赖于你选择的聚合函数。
+选择 view options 更改表格中如下方面：
+Bar Mode 当你为自己的图形定义了多个 Y 轴聚合时，你可以用这个选项决定聚合显示的方式：
+stacked 依次堆叠聚合效果。
+percentage 每个聚合显示为总和的百分比。
+grouped 用最低优先级的子聚合的结果做水平分组。
+多选框可以用来控制以下行为：
+Show Tooltip 勾选该项显示工具栏。
+Show Legend 勾选该项在图形右侧显示图例。
+Scale Y-Axis to Data Bounds 默认的 Y 轴长度为 0 到数据集的最大值。勾选该项改变 Y 轴的最大和最小值为数据集的返回值。
+
+
+
+一个 Kibana dashboard 能让你自由排列一组已保存的可视化。然后你可以保存这个仪表板，用来分享或者重载。
+简单的仪表板像这样。Example dashboard
+开始
+
+要用仪表板，你需要至少有一个已保存的 visualization。
+创建一个新的仪表板
+
+你第一次点击 Dashboard 标签的时候，Kibana 会显示一个空白的仪表板
+New Dashboard screen
+
+通过添加可视化的方式来构建你的仪表板。默认情况下，Kibana 仪表板使用明亮风格。如果你想切换成黑色风格点击数 Settings 按钮，然后勾选 Use dark theme。
+dark theme
+
+自动刷新页面
+
+你可以设置页面自动刷新的间隔以查看最新索引进来的数据。这个设置会定期提交搜索请求。
+设置刷新间隔后，它会出现在菜单栏的时间过滤器左侧。
+要设置刷新间隔：
+点击菜单栏右上角的 Time Filter
+点击 Refresh Interval 标签
+从列表中选择一个刷新间隔
+要自动刷新数据，点击 Auto-Refresh 按钮选择自动刷新间隔：
+
+
+开启自动刷新后，Kibana 顶部菜单栏会显示一个暂停按钮和自动刷新间隔：。点击这个暂停按钮可以暂停自动刷新。
+添加可视化到仪表板上
+
+要添加可视化到仪表板上，点击工具栏面板上的 Add Visualization Plus 按钮。从列表中选择一个已保存的可视化。你可以在 Visualization Filter 里输入字符串来过滤想要找的可视化。
+由你选择的这个可视化会出现在你仪表板上的一个容器(container)里。
+如果你觉得容器的高度和宽度不合适，可以调整容器大小。
+保存仪表板
+
+要保存仪表板，点击工具栏面板上的 Save Dashboard 按钮，在 Save As 栏输入仪表板的名字，然后点击 Save 按钮。
+加载已保存仪表板
+
+点击 Load Saved Dashboard 按钮显示已存在的仪表板列表。已保存仪表板选择器包括了一个文本栏可以通过仪表板的名字做过滤，还有一个链接到 Object Editor 而已管理你的已保存仪表板。你也可以直接点击 Settings > Edit Saved Objects 来访问 Object Editor。
+分享仪表板
+
+你可以分享仪表板给其他用户。可以直接分享 Kibana 的仪表板链接，也可以嵌入到你的网页里。
+用户必须有 Kibana 的访问权限才能看到嵌入的仪表板。
+点击 Share 按钮显示 HTML 代码，就可以嵌入仪表板到其他网页里。还带有一个指向仪表板的链接。点击复制按钮Copy 可以复制代码，或者链接到你的黏贴板。
+嵌入仪表板
+
+要嵌入仪表板，从 Share 页里复制出嵌入代码，然后粘贴进你外部网页应用内即可。
+定制仪表板元素
+
+仪表板里的可视化都存在可以调整大小的容器里。接下来会讨论一下容器。
+移动容器
+
+点击并按住容器的顶部，就可以拖动容器到仪表板任意位置。其他容器会在必要的时候自动移动，给你在拖动的这个容器空出位置。松开鼠标，容器就会固定在当前停留位置。
+改变容器大小
+
+移动光标到容器的右下角，等光标变成指向拐角的方向，点击并按住鼠标，拖动改变容器的大小。松开鼠标，容器就会固定成当前大小。
+删除容器
+
+点击容器右上角的 x 图标删除容器。从仪表板删除容器，并不会同时删除掉容器里用到的已存可视化。
+查看详细信息
+
+要显示可视化背后的原始数据，点击容器地步的条带。可视化会被有关原始数据详细信息的几个标签替换掉。如下所示：
+表格(Table)。底层数据的分页展示。你可以通过点击每列顶部的方式给该列数据排序。images/NYCTA-Table.jpg
+请求(Request)。发送到服务器的原始请求，以 JSON 格式展示。images/NYCTA-Request.jpg
+响应(Response)。从服务器返回的原始响应，以 JSON 格式展示。images/NYCTA-Response.jpg
+统计值(Statistics)。和请求响应相关的一些统计值，以数据网格的方式展示。数据报告，请求时间，响应时间，返回的记录条目数，匹配请求的索引模式(index pattern)。images/NYCTA-Statistics.jpg
+修改可视化
+
+点击容器右上角的 Edit 按钮 Pencil button 在 Visualize 页打开可视化编辑。+
+
+
+
+
+要使用 Kibana，你就得告诉它你想要探索的 Elasticsearch 索引是那些，这就要配置一个或者更多的索引模式。此外，你还可以：
+创建脚本化字段，这个字段可以实时从你的数据中计算出来。你可以浏览这种字段，并且在它基础上做可视化，但是不能搜索这种字段。
+设置高级选项，比如表格里显示多少行，常用字段显示多少个。修改高级选项的时候要千万小心，因为一个设置很可能跟另一个设置是不兼容的。
+为生产环境配置 Kibana。
+创建一个连接到 Elasticsearch 的索引模式
+
+一个索引模式定义了一个或者多个你打算探索的 Elasticsearch 索引。Kibana 会查找匹配指定模式的索引名。模式中的通配符()匹配零到多个字符。比如，模式 `myindex-匹配所有名字以myindex-开头的索引，比如myindex-1和myindex-2`。
+如果你用了事件时间来创建索引名(比如说，如果你是用 Logstash 往 Elasticsearch 里写数据)，索引模式里也可以匹配一个日期格式。在这种情况下，模式的静态文本部分必须用中括号包含起来，日期格式能用的字符，参见表 1 "日期格式码"。
+比如，[logstash-]YYYY.MM.DD 匹配所有名字以 logstash- 为前缀，后面跟上 YYYY.MM.DD 格式时间戳的索引，比如 logstash-2015.01.31 和 logstash-2015-02-01。
+索引模式也可以简单的设置为一个单独的索引名字。
+要创建一个连接到 Elasticsearch 的索引模式：
+切换到 Settings > Indices 标签页。
+指定一个能匹配你的 Elasticsearch 索引名的索引模式。默认的，Kibana 会假设你是要处理 Logstash 导入的数据。
+当你在顶层标签页之间切换的时候，Kibana 会记住你之前停留的位置。比如，如果你在 Settings 标签页查看了一个索引模式，然后切换到 Discover 标签，再切换回 Settings 标签，Kibana 还会显示上次你查看的索引模式。要看到创建模式的表单，需要从索引模式列表里点击 Add 按钮。
+如果你索引有时间戳字段打算用来做基于事件的对比，勾选 Index contains time-based events 然后选择包含了时间戳的索引字段。Kibana 会读取索引映射，列出所有包含了时间戳的字段供选择。
+如果新索引是周期性生成，名字里有时间戳的，勾选 Use event times to create index names 和 Index pattern interval 选项。这会让 Kibana 只搜索哪些包含了你指定的时间范围内的数据的索引。当你使用 Logstash 往 Elasticsearch 写数据的时候非常有用。
+点击 Create 添加索引模式。
+要设置新模式作为你查看 Discover 页是的默认模式，点击 favorite 按钮。
+表 1. 日期格式码
+格式	描述
+M	Month - cardinal: 1 2 3 … 12
+Mo	Month - ordinal: 1st 2nd 3rd … 12th
+MM	Month - two digit: 01 02 03 … 12
+MMM	Month - abbreviation: Jan Feb Mar … Dec
+MMMM	Month - full: January February March … December
+Q	Quarter: 1 2 3 4
+D	Day of Month - cardinal: 1 2 3 … 31
+Do	Day of Month - ordinal: 1st 2nd 3rd … 31st
+DD	Day of Month - two digit: 01 02 03 … 31
+DDD	Day of Year - cardinal: 1 2 3 … 365
+DDDo	Day of Year - ordinal: 1st 2nd 3rd … 365th
+DDDD	Day of Year - three digit: 001 002 … 364 365
+d	Day of Week - cardinal: 0 1 3 … 6
+do	Day of Week - ordinal: 0th 1st 2nd … 6th
+dd	Day of Week - 2-letter abbreviation: Su Mo Tu … Sa
+ddd	Day of Week - 3-letter abbreviation: Sun Mon Tue … Sat
+dddd	Day of Week - full: Sunday Monday Tuesday … Saturday
+e	Day of Week (locale): 0 1 2 … 6
+E	Day of Week (ISO): 1 2 3 … 7
+w	Week of Year - cardinal (locale): 1 2 3 … 53
+wo	Week of Year - ordinal (locale): 1st 2nd 3rd … 53rd
+ww	Week of Year - 2-digit (locale): 01 02 03 … 53
+W	Week of Year - cardinal (ISO): 1 2 3 … 53
+Wo	Week of Year - ordinal (ISO): 1st 2nd 3rd … 53rd
+WW	Week of Year - two-digit (ISO): 01 02 03 … 53
+YY	Year - two digit: 70 71 72 … 30
+YYYY	Year - four digit: 1970 1971 1972 … 2030
+gg	Week Year - two digit (locale): 70 71 72 … 30
+gggg	Week Year - four digit (locale): 1970 1971 1972 … 2030
+GG	Week Year - two digit (ISO): 70 71 72 … 30
+GGGG	Week Year - four digit (ISO): 1970 1971 1972 … 2030
+A	AM/PM: AM PM
+a	am/pm: am pm
+H	Hour: 0 1 2 … 23
+HH	Hour - two digit: 00 01 02 … 23
+h	Hour - 12-hour clock: 1 2 3 … 12
+hh	Hour - 12-hour clock, 2 digit: 01 02 03 … 12
+m	Minute: 0 1 2 … 59
+mm	Minute - two-digit: 00 01 02 … 59
+s	Second: 0 1 2 … 59
+ss	Second - two-digit: 00 01 02 … 59
+S	Fractional Second - 10ths: 0 1 2 … 9
+SS	Fractional Second - 100ths: 0 1 … 98 99
+SSS	Fractional Seconds - 1000ths: 0 1 … 998 999
+Z	Timezone - zero UTC offset (hh:mm format): -07:00 -06:00 -05:00 .. +07:00
+ZZ	Timezone - zero UTC offset (hhmm format): -0700 -0600 -0500 … +0700
+X	Unix Timestamp: 1360013296
+x	Unix Millisecond Timestamp: 1360013296123
+设置默认索引模式
+
+默认索引模式会在你查看 Discover 标签的时候自动加载。Kibana 会在 Settings > Indices 标签页的索引模式列表里，给默认模式左边显示一个星号。你创建的第一个模式会自动被设置为默认模式。
+要设置一个另外的模式为默认索引模式：
+进入 Settings > Indices 标签页。
+在索引模式列表里选择你打算设置为默认值的模式。
+点击模式的 Favorite 标签。
+你也可以在 Advanced > Settings 里设置默认索引模式。
+重加载索引的字段列表
+
+当你添加了一个索引映射，Kibana 自动扫描匹配模式的索引以显示索引字段。你可以重加载索引字段列表，以显示新添加的字段。
+重加载索引字段列表，也会重设 Kibana 的常用字段计数器。这个计数器是跟踪你在 Kibana 里常用字段，然后来排序字段列表的。
+要重加载索引的字段列表：
+进入 Settings > Indices 标签页。
+在索引模式列表里选择一个索引模式。
+点击模式的 Reload 按钮。
+删除一个索引模式
+
+要删除一个索引模式：
+进入 Settings > Indices 标签页。
+在索引模式列表里选择你打算删除的模式。
+点击模式的 Delete 按钮。
+确认你是想要删除这个索引模式。
+创建一个脚本化字段
+
+脚本化字段从你的 Elasticsearch 索引数据中即时计算得来。在 Discover 标签页，脚本化字段数据会作为文档数据的一部分显示，而且你还可以在可视化里使用脚本化字段。(脚本化字段的值是在请求的时候计算的，所以它们没有被索引，不能搜索到)
+即时计算脚本化字段非常消耗资源，会直接影响到 Kibana 的性能。而且记住，Elasticsearch 里没有内置对脚本化字段的验证功能。如果你的脚本有 bug，你会在查看动态生成的数据时看到 exception。
+脚本化字段使用 Lucene 表达式语法。更多细节，请阅读 Lucene Expressions Scripts。
+你可以在表达式里引用任意单个数值类型字段，比如：
+doc['field_name'].value
+要创建一个脚本化字段：
+进入 Settings > Indices
+选择你打算添加脚本化字段的索引模式。
+进入模式的 Scripted Fields 标签。
+点击 Add Scripted Field。
+输入脚本化字段的名字。
+输入用来即时计算数据的表达式。
+点击 Save Scripted Field.
+有关 Elasticsearch 的脚本化字段的更多细节，阅读 Scripting。
+更新一个脚本化字段
+
+要更新一个脚本化字段：
+进入 Settings > Indices。
+点击你要更新的脚本化字段的 Edit 按钮。
+完成变更后点击 Save Scripted Field 升级。
+注意 Elasticsearch 里没有内置对脚本化字段的验证功能。如果你的脚本有 bug，你会在查看动态生成的数据时看到 exception。
+删除一个脚本化字段
+
+要删除一个脚本化字段：
+进入 Settings > Indices。
+点击你要删除的脚本化字段的 Delete 按钮。
+确认你确实想删除它。
+设置高级参数
+
+高级参数页允许你直接编辑那些控制着 Kibana 应用行为的设置。比如，你可以修改显示日期的格式，修改默认的索引模式，设置十进制数值的显示精度。
+修改高级参数可能带来意想不到的后果。如果你不确定自己在做什么，最好离开这个设置页面。
+要设置高级参数：
+进入 Settings > Advanced。
+点击你要修改的选项的 Edit 按钮。
+给这个选项输入一个新的值。
+点击 Save 按钮。
+管理已保存的搜索，可视化和仪表板
+
+你可以从 Settings > Objects 查看，编辑，和删除已保存的搜索，可视化和仪表板。
+查看一个已保存的对象会显示在 Discover, Visualize 或 Dashboard 页里已选择的项目。要查看一个已保存对象：
+进入 Settings > Objects。
+选择你想查看的对象。
+点击 View 按钮。
+编辑一个已保存对象让你可以直接修改对象定义。你可以修改对象的名字，添加一段说明，以及修改定义这个对象的属性的 JSON。
+如果你尝试访问一个对象，而它关联的索引已经被删除了，Kibana 会显示这个对象的编辑(Edit Object)页。你可以：
+重建索引这样就可以继续用这个对象。
+删除对象，然后用另一个索引重建对象。
+在对象的 kibanaSavedObjectMeta.searchSourceJSON 里修改引用的索引名，指向一个还存在的索引模式。这个在你的索引被重命名了的情况下非常有用。
+对象属性没有验证机制。提交一个无效的变更会导致对象不可用。通常来说，你还是应该用 Discover, Visualize 或 Dashboard 页面来创建新对象而不是直接编辑已存在的对象。
+要编辑一个已保存的对象：
+进入 Settings > Objects。
+选择你想编辑的对象。
+点击 Edit 按钮。
+修改对象定义。
+点击 Save Object 按钮。
+要删除一个已保存的对象：
+进入 Settings > Objects。
+选择你想删除的对象。
+点击 Delete 按钮。
+确认你确实想删除这个对象。
+设置 kibana 服务器属性
+
+Kibana 服务器在启动的时候会从 kibana.yml 文件读取属性设置。默认设置是运行在 localhost:5601。要变更主机或端口，或者连接远端主机上的 Elasticsearch，你都需要更新你的 kibana.yml 文件。你还可以开启 SSL 或者设置其他一系列选项：
+表 2. Kibana 服务器属性
+属性	描述
+port	Kibana 服务器运行的端口。默认：port: 5601。
+host	Kibana 服务器监听的地址。默认：host: "0.0.0.0"。
+elasticsearch_url	你想请求的索引存在哪个 Elasticsearch 实例上。默认：elasticsearch_url: "http://localhost:9200"。
+elasticsearch_preserve_host	默认的，浏览器请求中的主机名即作为 Kibana 发送给 Elasticsearch 时请求的主机名。如果你设置这个参数为 false, Kibana 会改用 elasticsearch_url 里的主机名。你应该不用担心这个设置 —— 直接用默认即可。默认：elasticsearch_preserve_host: true。
+kibana_index	保存搜索，可视化，仪表板信息的索引的名字。默认：kibana_index: .kibana。
+default_app_id	进入 Kibana 是默认显示的页面。可以为 discover, visualize, dashboard 或 settings。默认：default_app_id: "discover"。
+request_timeout	等待 Kibana 后端或 Elasticsearch 的响应的超时时间，单位毫秒。默认：request_timeout: 500000。
+shard_timeout	Elasticsearch 等待分片响应的超时时间。设置为 0 表示关闭超时控制。默认：shard_timeout: 0。
+verify_ssl	定义是否验证 Elasticsearch SSL 证书。设置为 false 关闭 SSL 认证。默认：verify_ssl: true。
+ca	你的 Elasticsearch 实例的 CA 证书的路径。如果你是自己签的证书，必须指定这个参数，证书才能被认证。否则，你需要关闭 verify_ssl。默认：none。
+ssl_key_file	Kibana 服务器的密钥文件路径。设置用来加密浏览器和 Kibana 之间的通信。默认：none。
+ssl_cert_file	Kibana 服务器的证书文件路径。设置用来加密浏览器和 Kibana 之间的通信。默认：none。
+pid_file	你想用来存进程 ID 文件的位置。如果没有指定，PID 文件存在 /var/run/kibana.pid。默认：none。
+
+
+
+
+常见 sub aggs 示例
+
+本章开始，就提到 K4 和 K3 的区别，在 K4 中，即便介绍完了全部 visualize 的配置项，也不代表用户能立刻上手配置出来和 K3 一样的面板。所以本节，会以几个具体的日志分析需求为例，演示在 K4 中，利用 Elasticsearch 1.0 以后提供的 Aggregation 特性，能够做到哪些有用的可视化效果。
+
+
+
+
+函数调用链堆栈
+
+本书之前已经介绍过 logstash 如何利用 multiline 或者 log4j 插件解析函数堆栈。那么，对函数堆栈，我们除了对底层函数做基础的 topN 排序，还能深入发掘出来什么信息呢？
+下图是一个 PHP 慢函数堆栈的可视化统计：
+
+
+该图利用了 Kibana4 的 sub aggs 特性。按照分层次的函数堆栈，逐层做 terms agg。得到一个类似火焰图效果的千层饼效果。
+和火焰图不同的是，千层饼并不能自动深入到函数堆栈的全部层次，需要自己手动指定聚合到第几层。考虑到重复操作在页面上不是很方便。可以利用 Kibana4 的 url 特性，直接修改地址生成效果。上图的 url 如下：
+http://k4domain:5601/#/visualize/edit/php-slow-stack-pie?_g=()&_a=(filters:!(),linked:!t,query:(query_string:(query:'*')),vis:(aggs:!((id:'1',params:(),schema:metric,type:count),(id:'2',params:(field:slow.1,order:desc,orderBy:'1',size:10),schema:segment,type:terms),(id:'3',params:(field:slow.2,order:desc,orderBy:'1',size:10),schema:segment,type:terms),(id:'4',params:(field:slow.3,order:desc,orderBy:'1',size:10),schema:segment,type:terms),(id:'5',params:(field:slow.4,order:desc,orderBy:'1',size:10),schema:segment,type:terms)),listeners:(),params:(addLegend:!f,addTooltip:!t,defaultYExtents:!f,isDonut:!t,shareYAxis:!t,spyPerPage:10),type:pie))
+可以看到，如果打算增减堆栈的聚合层次，对应增减一段 (id:'5',params:(field:slow.4,order:desc,orderBy:'1',size:10), 就可以了。
+作为固定可视化分析模式的另一种分享办法，还可以导出该 visualize object 在 .kibana 索引中的 JSON 记录。这样其他人只需要原样再导入到自己的 .kibana 索引即可：
+# curl 127.0.0.1:9200/.kibana/visualization/php-slow-stack-pie/_source
+{"title":"php-slow-stack-pie","visState":"{\"aggs\":[{\"id\":\"1\",\"params\":{},\"schema\":\"metric\",\"type\":\"count\"},{\"id\":\"2\",\"params\":{\"field\":\"slow.1\",\"order\":\"desc\",\"orderBy\":\"1\",\"size\":10},\"schema\":\"segment\",\"type\":\"terms\"},{\"id\":\"3\",\"params\":{\"field\":\"slow.2\",\"order\":\"desc\",\"orderBy\":\"1\",\"size\":10},\"schema\":\"segment\",\"type\":\"terms\"},{\"id\":\"4\",\"params\":{\"field\":\"slow.3\",\"order\":\"desc\",\"orderBy\":\"1\",\"size\":10},\"schema\":\"segment\",\"type\":\"terms\"},{\"id\":\"5\",\"params\":{\"field\":\"slow.4\",\"order\":\"desc\",\"orderBy\":\"1\",\"size\":10},\"schema\":\"segment\",\"type\":\"terms\"}],\"listeners\":{},\"params\":{\"addLegend\":false,\"addTooltip\":true,\"defaultYExtents\":false,\"isDonut\":true,\"shareYAxis\":true,\"spyPerPage\":10},\"type\":\"pie\"}","description":"","savedSearchId":"php-fpm-slowlog","version":1,"kibanaSavedObjectMeta":{"searchSourceJSON":"{\"filter\":[]}"}}
+上面记录中可以看到，这个 visualize 还关联了一个 savedSearch，那么同样，再从 .kibana 索引里把这个内容也导出：
+# curl 127.0.0.1:9200/.kibana/search/php-fpm-slowlog/_source
+{"title":"php-fpm-slowlog","description":"","hits":0,"columns":["_source"],"sort":["@timestamp","desc"],"version":1,"kibanaSavedObjectMeta":{"searchSourceJSON":"{\n  \"index\": \"[logstash-mweibo-]YYYY.MM.DD\",\n  \"highlight\": {\n    \"pre_tags\": [\n      \"@kibana-highlighted-field@\"\n    ],\n    \"post_tags\": [\n      \"@/kibana-highlighted-field@\"\n    ],\n    \"fields\": {\n      \"*\": {}\n    }\n  },\n  \"filter\": [\n    {\n      \"meta\": {\n        \"index\": \"[logstash-mweibo-]YYYY.MM.DD\",\n        \"negate\": false,\n        \"key\": \"_type\",\n        \"value\": \"php-fpm-slow\",\n        \"disabled\": false\n      },\n      \"query\": {\n        \"match\": {\n          \"_type\": {\n            \"query\": \"php-fpm-slow\",\n            \"type\": \"phrase\"\n          }\n        }\n      }\n    }\n  ],\n  \"query\": {\n    \"query_string\": {\n      \"query\": \"*\",\n      \"analyze_wildcard\": true\n    }\n  }\n}"}}
+这个内容看起来有点怪怪的，其实把 searchSourceJSON 字符串复制出来，在终端下贴到 echo -ne 命令后面，回车即可看到其实是这样：
+{
+  "index": "[logstash-mweibo-]YYYY.MM.DD",
+  "highlight": {
+    "pre_tags": [
+      "@kibana-highlighted-field@"
+    ],
+    "post_tags": [
+      "@/kibana-highlighted-field@"
+    ],
+    "fields": {
+      "*": {}
+    }
+  },
+  "filter": [
+    {
+      "meta": {
+        "index": "[logstash-mweibo-]YYYY.MM.DD",
+        "negate": false,
+        "key": "_type",
+        "value": "php-fpm-slow",
+        "disabled": false
+      },
+      "query": {
+        "match": {
+          "_type": {
+            "query": "php-fpm-slow",
+            "type": "phrase"
+          }
+        }
+      }
+    }
+  ],
+  "query": {
+    "query_string": {
+      "query": "*",
+      "analyze_wildcard": true
+    }
+  }
+}
+
+
+
+
+
+分图统计
+
+上一节我们展示了 sub aggs 在饼图上的效果。不过这多层 agg，其实用的是同一类数据。如果在聚合中，要加上一些完全不同纬度的数据，还是在单一的图片上继续累加就不是很直观了。比如说，还是上一节用到的 PHP 慢函数堆栈。我们可以根据机房做一下拆分。由于代码部署等主动变更都是有灰度部署的，一旦发现某机房有异常，就可以及时处理了。
+同样还是新建 sub aggs，但是在开始，选择 split chart 而不是 split slice。
+
+
+从 URL 里可以看到，分图的 aggs 是 schema:split，而饼图分片的 aggs 是 schema:segment：
+http://k4domain:5601/#/visualize/edit/php-slow-stack-pie?_g=(refreshInterval:(display:Off,pause:!f,section:0,value:0),time:(from:now-12h,mode:quick,to:now))&_a=(filters:!(),linked:!t,query:(query_string:(query:'*')),vis:(aggs:!((id:'1',params:(),schema:metric,type:count),(id:'6',params:(field:idc,order:desc,orderBy:'1',row:!f,size:5),schema:split,type:terms),(id:'2',params:(field:slow.1,order:desc,orderBy:'1',size:10),schema:segment,type:terms),(id:'3',params:(field:slow.2,order:desc,orderBy:'1',size:10),schema:segment,type:terms),(id:'4',params:(field:slow.3,order:desc,orderBy:'1',size:10),schema:segment,type:terms),(id:'5',params:(field:slow.4,order:desc,orderBy:'1',size:10),schema:segment,type:terms)),listeners:(),params:(addLegend:!f,addTooltip:!t,defaultYExtents:!f,isDonut:!t,shareYAxis:!t,spyPerPage:10),type:pie))
+
+
+
+
+
+
+TopN 的时序趋势图
+
+TopN 的时序趋势图是将 ELK Stack 用于监控场景最常用的手段。乃至在 Kibana3 时代，开发者都通过在 Query 框上额外定义 TopN 输入的方式提供了这个特性。不过在 Kibana4 中，因为 sub aggs 的依次分桶原理，TopN 时序趋势图又有了新的特点。
+Kibana3 中，请求实质是先单独发起一次 termFacet 请求得到 topN，然后再发起带有 facetFilter 的 dateHistogramFacet ，分别请求每个 term 的时序。那么同样的原理，迁移到 Kibana4 中，就是先利用一次 termAgg 分桶后，再每个桶内做 dateHistogramAgg 了。对应的 Kibana4 地址为：
+http://k4domain:5601/#/visualize/edit/php-fpm-slowlog-histogram?_g=(refreshInterval:(display:Off,pause:!f,section:0,value:0),time:(from:now-12h,mode:quick,to:now))&_a=(filters:!(),linked:!t,query:(query_string:(query:'*')),vis:(aggs:!((id:'1',params:(),schema:metric,type:count),(id:'3',params:(field:host,order:desc,orderBy:'1',size:3),schema:group,type:terms),(id:'2',params:(customInterval:'2h',extended_bounds:(),field:'@timestamp',interval:auto,min_doc_count:1),schema:segment,type:date_histogram)),listeners:(),params:(addLegend:!t,addTimeMarker:!f,addTooltip:!t,defaultYExtents:!t,interpolate:linear,mode:stacked,scale:linear,setYExtents:!f,shareYAxis:!t,smoothLines:!f,times:!(),yAxis:()),type:area))
+效果如下：
+
+
+可以看到图上就是 3 根线，分别代表 top3 的 host 的时序。
+一般来说，这样都是够用的。不过如果经常有 host 变动的时候，在这么大的一个时间范围内，求一次总的 topN，可能就淹没了一些瞬间的变动了。所以，在 Kibana4 上，我们可以把 sub aggs 的顺序颠倒一下。先按 dateHistogramAgg 分桶，再在每个时间桶内，做 termAgg。对应的 Kibana4 地址为：
+http://k4domain:5601/#/visualize/edit/php-fpm-slowlog-histogram?_g=(refreshInterval:(display:Off,pause:!f,section:0,value:0),time:(from:now-12h,mode:quick,to:now))&_a=(filters:!(),linked:!t,query:(query_string:(query:'*')),vis:(aggs:!((id:'1',params:(),schema:metric,type:count),(id:'2',params:(customInterval:'2h',extended_bounds:(),field:'@timestamp',interval:auto,min_doc_count:1),schema:segment,type:date_histogram),(id:'3',params:(field:host,order:desc,orderBy:'1',size:3),schema:group,type:terms)),listeners:(),params:(addLegend:!t,addTimeMarker:!f,addTooltip:!t,defaultYExtents:!t,interpolate:linear,mode:stacked,scale:linear,setYExtents:!f,shareYAxis:!t,smoothLines:!f,times:!(),yAxis:()),type:area))
+可以对比一下前一条 url，其中就是把 id 为 2 和 3 的两段做了对调。而最终效果如下：
+
+
+差距多么明显！+
+
+
+
+
+响应时间的百分占比趋势图
+
+时序图除了上节展示的最基本的计数以外，还可以在 Y 轴上使用其他数值统计结果。最常见的，比如访问日志的平均响应时间。但是平均值在数学统计中，是一个非常不可信的数据。稍微几个远离置信区间的数值就可以严重影响到平均值。所以，在评价数值的总体分布情况时，更推荐采用四分位数。也就是 25%，50%，75%。在可视化方面，一般采用箱体图方式。
+Kibana4 没有箱体图的可视化方式。不过采用线图，我们一样可以做到类似的效果。
+在上一章的时序数据基础上，改变 Y 轴数据源，选择 Percentile 方式，然后输入具体的四分位。运行渲染即可。
+
+
+对比新的 URL，可以发现变化的就是 id 为 1 的片段。变成了 (id:'1',params:(field:connect_ms,percents:!(50,75,95,99)),schema:metric,type:percentiles)：
+http://k4domain:5601/#/visualize/create?type=area&savedSearchId=curldebug&_g=()&_a=(filters:!(),linked:!t,query:(query_string:(query:'*')),vis:(aggs:!((id:'1',params:(field:connect_ms,percents:!(50,75,95,99)),schema:metric,type:percentiles),(id:'2',params:(customInterval:'2h',extended_bounds:(),field:'@timestamp',interval:auto,min_doc_count:1),schema:segment,type:date_histogram)),listeners:(),params:(addLegend:!f,addTimeMarker:!f,addTooltip:!t,defaultYExtents:!f,interpolate:linear,mode:stacked,scale:linear,setYExtents:!f,shareYAxis:!t,smoothLines:!t,times:!(),yAxis:()),type:area))
+实践表明，在访问日志数据上，平均数一般相近于 75% 的四分位数。所以，为了更细化性能情况，我们可以改用诸如 90%，95% 这样的百分位。
+此外，从 Kibana4.1 开始，新加入了 Percentile_rank 聚合支持。可以在 Y 轴数据源里选择这种聚合，输入具体的响应时间，比如 2s。则可视化数据变成 2s 内完成的响应数占总数的百分比的趋势图。
+
+
+
+
+响应时间的概率分布在不同时段的相似度对比
+
+前面已经用百分位的时序，展示如何更准确的监控时序数据的波动。那么，还能不能更进一步呢？在制定 SLA 的时候，制定报警阈值的时候，怎么才能确定当前服务的拐点？除了压测以外，我们还可以拿线上服务的实际数据计算一下概率分布。Kibana4 对此提供了直接的支持，我们可以以数值而非时间作为 X 轴数据。
+那么进一步，我们怎么区分不同产品在同一时间，或者相同产品在不同时间，性能上有无渐变到质变的可能？这里，我们可以采用 grouped 方式，来排列 filter aggs 的结果：
+
+
+我们可以看出来，虽然两个时间段，响应时间是有一定差距的，但是是整体性的抬升，没有明显的异变。
+当然，如果觉得目测不靠谱的，可以把两组数值拿下来，通过 PDL、scipy、matlab、R 等工具做具体的差异显著性检测。这就属于后续的二次开发了。
+filter 中，可以写任意的 query string 语法。不限于本例中的时间段：
+http://k4domain:5601/#/visualize/create?type=histogram&indexPattern=%5Blogstash-mweibo-nginx-%5DYYYY.MM.DD&_g=()&_a=(filters:!(),linked:!f,query:(query_string:(analyze_wildcard:!t,query:'request_time:%3C50')),vis:(aggs:!((id:'1',params:(),schema:metric,type:count),(id:'3',params:(filters:!((input:(query:(query_string:(analyze_wildcard:!t,query:'@timestamp:%5B%22now-7m%22%20TO%20%22now%22%5D')))),(input:(query:(query_string:(analyze_wildcard:!t,query:'@timestamp:%5B%22now-15m%22%20TO%20%22now-7m%22%7D')))))),schema:group,type:filters),(id:'2',params:(extended_bounds:(),field:request_time,interval:1),schema:segment,type:histogram)),listeners:(),params:(addLegend:!t,addTimeMarker:!f,addTooltip:!t,defaultYExtents:!f,mode:grouped,scale:linear,setYExtents:!f,shareYAxis:!t,spyPerPage:10,times:!(),yAxis:()),type:histogram))
+
+
+
+
+
+
+
+
+源码剖析
+
+Kibana 4 采用 angular.js + node.js 框架编写。其中 node.js 主要提供两部分功能，给 Elasticsearch 做搜索请求转发代理，以及 auth、ssl、setting 等操作的服务器后端。
+本章节假设你已经对 angular 有一定程度了解 —— 至少是阅读并理解了 kibana 3 源码剖析章节内容的程度。所以不会再解释其中 angular 的 route，controller，directive，service，factory 等概念。
+如果打算迁移 kibana 3 的 CAS 验证功能到 kibana 4，那么可以稍微了解一下 index.js, app.js, lib/auth.js 里的 htpasswd 简单实现，相信可以很快修改成功。本章主要还是集中在前端 kibana 页面功能的实现上。
+在 Elastic{ON} 大会上，也有专门针对 Kibana 4 源码和二次开发入门的演讲。请参阅：https://speakerdeck.com/elastic/the-contributors-guide-to-the-kibana-galaxy
+另外可以看专业的前端工程师怎么看Kibana4的代码的：http://www.debuggerstepthrough.com/2015/04/reviewing-kibana-4s-client-side-code.html。
+
+
+
+
+kibana_index 结构
+
+包括有以下 type：
+config
+
+_id 为 kibana4 的 version。内容主要是 defaultIndex，设置默认的 index_pattern.
+search
+
+_id 为 discover 上保存的搜索名称。内容主要是 title，column，sort 和 kibanaSavedObjectMeta。kibanaSavedObjectMeta 内是一个 searchSourceJSON，保存搜索 json 的字符串。
+visualization
+
+_id 为 visualize 上保存的可视化名称。内容包括 title，savedSearchId，kibanaSavedObjectMeta 和 visState。其中 visState 里保存了 聚合 json 的字符串。如果绑定了已保存的搜索，那么把其在 search 类型里的 _id 存在 savedSearchId 字段里，如果是从新搜索开始的，那么把搜索 json 的字符串直接存在自己的 kibanaSavedObjectMeta 的 searchSourceJSON 里。
+dashboard
+
+_id 为 dashboard 上保存的仪表盘名称。内容包括 title, panelsJSON 和 kibanaSavedObjectMeta。其中 panelsJSON 是一个数组，每个元素是一个 panel 的属性定义。定义包括有：
+type: 具体加载的 app 类型，就默认来说，肯定就是 search 或者 visualization 之一。
+id: 具体加载的 app 的保存 id。也就是上面说过的，它们在各自类型下的 _id 内容。
+size_x: panel 的 X 轴长度。Kibana 4 采用 gridster 库做挂件的动态划分，默认为 3。
+size_y: panel 的 Y 轴长度。默认为 2。
+col: panel 的左边侧起始位置。Kibana 4 指定 col 最大为 12。每行第一个 panel 的 col 就是 1，假如它的 size_x 是 4，那么第二个 panel 的 col 就是 5。
+row: panel 位于第几行。gridster 默认的 row 最大为 15。
+index-pattern
+
+_id 为 setting 中设置的 index pattern。内容主要是匹配该模式的所有索引的全部字段与字段映射。如果是基于时间的索引模式，还会有主时间字段 timeFieldName 和时间间隔 intervalName 两个字段。
+field 数组中，每个元素是一个字段的情况，包括字段的 type, name, indexed, analyzed, doc_values, count, scripted 这些状态。
+如果 scripted 为 true，那么这个元素就是通过 kibana4 页面添加的脚本化字段，那么这条字段记录还会额外多几个内容：
+script: 记录实际 script 语句。
+lang: 在 Elasticsearch 的 datanode 上采用什么 lang-plugin 运行。默认是 expression。即 ES 1.4.4 开始默认启用的 Lucene expression。在目前的 kibana4 页面上，不提供对这个的修改，所以统一都是这个值。
+type: 因为 Lucene expression 目前只支持对数值型字段做操作，所以目前 kibana4 页面上也不提供对这个的修改，直接默认为 “number"。
+对确认要使用其他 lang-plugin 的，目前来说，可以自行修改 kibana_index 里的 index-pattern 类型中的数据，修改成 ”lang”: “groovy”,”type”:”string” 即可。页面上是可以通用的。
+小贴士
+
+在本书之前介绍 packetbeat 时提到的自带 dashboard 导入脚本，其实就是通过 curl命令上传这些 JSON 到 kibana_index 索引里。+
+
+
+
+
+
+
+
+主页入口
+
+kibana 4 主页入口，分析方法跟 kibana 3 一样，看 index.html 和 require.config.js 即可。由此可以看到，首先进入的，应该是 index.js。主要分为两步。
+第一步，route 设置
+
+define(function (require) {
+  var angular = require('angular');
+  var _ = require('lodash');
+  var $ = require('jquery');
+  var modules = require('modules');
+  var routes = require('routes');
+
+  var configFile = JSON.parse(require('text!config'));
+
+  var kibana = modules.get('kibana', [
+    'elasticsearch',
+    'pasvaz.bindonce',
+    'ngRoute',
+    'ngClipboard'
+  ]);
+
+  kibana
+    .constant('kbnVersion', window.KIBANA_VERSION)
+    .constant('minimumElasticsearchVersion', '1.6.0')
+    .constant('sessionId', Date.now())
+    .config(routes.config);
+
+  routes
+    .otherwise({
+      redirectTo: '/' + configFile.default_app_id
+    });
+index.js 根据 configFile 设置默认 routes，设置要求的 Elasticsearch 版本；
+设置 routes 的具体操作在加载的 utils/routes/index.js 文件里，其中会调用 utils/routes/_setup.js，在未设置 default index pattern 的时候跳转 URL 到 "/settings/indices" 页面。
+      handleKnownError: function (err) {
+        if (err instanceof NoDefaultIndexPattern || err instanceof NoDefinedIndexPatterns) {
+          kbnUrl.change('/settings/indices');
+        } else {
+          return Promise.reject(err);
+        }
+      }
+此外，utils/routes/index.js 还会加载 components/setup/setup.js 完成整个环境的检查和启动(在 Kibana4.0 时，是在第二步 kibana plugin 加载的，4.1 开始往前挪到这里)。setup 过程包括：
+    var checkForEs = Private(require('components/setup/steps/check_for_es'));
+    var checkEsVersion = Private(require('components/setup/steps/check_es_version'));
+    var checkForKibanaIndex = Private(require('components/setup/steps/check_for_kibana_index'));
+    var createKibanaIndex = Private(require('components/setup/steps/create_kibana_index'));
+
+    return _.once(function () {
+      return checkForEs()
+      .then(checkEsVersion)
+      .then(checkForKibanaIndex)
+      .then(function (exists) {
+        if (!exists) return createKibanaIndex();
+      })
+    });
+也就是依次调用 components/setup/steps/ 下的 check_for_es, check_es_version, check_for_kibana_index，如果没有 kibana index，再调用一个 create_kibana_index。完成。
+第二步，kibana 插件加载
+
+  kibana.load = _.onceWithCb(function (cb) {
+    var firstLoad = [ 'plugins/kibana/index' ];
+    var thenLoad = _.difference(configFile.plugins, firstLoad);
+    require(firstLoad, function loadApps() {
+      require(thenLoad, cb);
+    });
+  });
+执行 kibana.load() 函数，先加载 plugins/kibana/index.js，然后加载 configFile 里定义的其他 plugins。
+plugins/kibana/index.js 里又有一系列操作：
+加载 components/courier/courier.js 和 components/config/config.js 两个 angular.service；
+加载 plugins/kibana/_init, plugins/kibana/_apps, plugins/kibana/_timepicker。
+components/config/config.js 主要是从 kibana index 里的 "config" type 中读取 "kbnVersion" id 的数据。这个 "kbnVersion" 就是之前 index.js 里的加载的第一个常量，在 grunt build 编译时会自动生成。
+plugins/kibana/_init 里监听 application.load 事件，触发 courier.start() 函数。
+plugins/kibana/_timepicker 提供时间选择器页面。
+courier 概述
+
+components/courier/courier.js 中定义了 Courier 类。Courier 是一个非常重要的东西，可以简单理解为 kibana 跟 ES 之间的一个 object mapper。简要的说，包括一下功能：
+    function Courier() {
+      var self = this;
+      var DocSource = Private(require('components/courier/data_source/doc_source'));
+      var SearchSource = Private(require('components/courier/data_source/search_source'));
+      var searchStrategy = Private(require('components/courier/fetch/strategy/search'));
+      var requestQueue = Private(require('components/courier/_request_queue'));
+      var fetch = Private(require('components/courier/fetch/fetch'));
+      var docLooper = self.docLooper = Private(require('components/courier/looper/doc'));
+      var searchLooper = self.searchLooper = Private(require('components/courier/looper/search'));
+
+      self.setRootSearchSource = Private(require('components/courier/data_source/_root_search_source')).set;
+      self.SavedObject = Private(require('components/courier/saved_object/saved_object'));
+      self.indexPatterns = indexPatterns;
+      self.redirectWhenMissing = Private(require('components/courier/_redirect_when_missing'));
+      self.DocSource = DocSource;
+      self.SearchSource = SearchSource;
+
+      self.start = function () {
+        searchLooper.start();
+        docLooper.start();
+        return this;
+      };
+      self.fetch = function () {
+        fetch.fetchQueued(searchStrategy).then(function () {
+          searchLooper.restart();
+        });
+      };
+      self.started = function () {
+        return searchLooper.started();
+      };
+      self.stop = function () {
+        searchLooper.stop();
+        return this;
+      };
+      self.createSource = function (type) {
+        switch (type) {
+        case 'doc':
+          return new DocSource();
+        case 'search':
+          return new SearchSource();
+        }
+      };
+      self.close = function () {
+        searchLooper.stop();
+        docLooper.stop();
+
+        _.invoke(requestQueue, 'abort');
+
+        if (requestQueue.length) {
+          throw new Error('Aborting all pending requests failed.');
+        }
+      };
+从类的方法中可以看出，其实主要就是五个属性的控制：
+DocSource 和 SearchSource：继承自 components/courier/data_source/_abstract.js，调用 components/courier/data_source/data_source/_doc_send_to_es.js 完成跟 ES 数据的交互，用来做 savedObject 和 index_pattern 的读写：
+      es[method](params)
+      .then(function (resp) {
+        if (resp.status === 409) throw new errors.VersionConflict(resp);
+
+        doc._storeVersion(resp._version);
+        doc.id(resp._id);
+
+        var docFetchProm;
+        if (method !== 'index') {
+          docFetchProm = doc.fetch();
+        } else {
+          // we already know what the response will be
+          docFetchProm = Promise.resolve({
+            _id: resp._id,
+            _index: params.index,
+            _source: body,
+            _type: params.type,
+            _version: doc._getVersion(),
+            found: true
+          });
+        }
+这个 es 在是调用了 services/es.js 里定义的 service，里面内容超级简单，就是加载官方的 elasticsearch.js 库，然后初始化一个最简的 esFactory 客户端，包括超时都设成了 0，把这个控制交给 server 端。
+define(function (require) {
+  require('elasticsearch');
+  var _ = require('lodash');
+  var es; // share the client amoungst all apps
+  require('modules')
+    .get('kibana', ['elasticsearch', 'kibana/config'])
+    .service('es', function (esFactory, configFile, $q) {
+      if (es) return es;
+
+      es = esFactory({
+        host: configFile.elasticsearch,
+        log: 'info',
+        requestTimeout: 0,
+        apiVersion: '1.4'
+      });
+      return es;
+    });
+});
+searchLooper 和 docLooper：分别给 Looper.start 方法传递 searchStrategy 和 docStrategy，对应 ES 的 /_msearch 和 /_mget 请求。searchLooper 的实现如下：
+    var fetch = Private(require('components/courier/fetch/fetch'));
+    var searchStrategy = Private(require('components/courier/fetch/strategy/search'));
+    var requestQueue = Private(require('components/courier/_request_queue'));
+    var Looper = Private(require('components/courier/looper/_looper'));
+    var searchLooper = new Looper(null, function () {
+      $rootScope.$broadcast('courier:searchRefresh');
+      return fetch.these(
+        requestQueue.getInactive(searchStrategy)
+      );
+    });
+这里的关键方法是 fetch.these()，出自 components/courier/fetch/_fetch_these.js，其中调用的 components/courier/fetch/_call_client.js 有如下一段代码：
+      Promise.map(executable, function (req) {
+        return Promise.try(req.getFetchParams, void 0, req)
+        .then(function (fetchParams) {
+          return (req.fetchParams = fetchParams);
+        });
+      })
+      .then(function (reqsFetchParams) {
+        return strategy.reqsFetchParamsToBody(reqsFetchParams);
+      })
+      .then(function (body) {
+        return (esPromise = es[strategy.clientMethod]({
+          timeout: configFile.shard_timeout,
+          ignore_unavailable: true,
+          preference: sessionId,
+          body: body
+        }));
+      })
+      .then(function (clientResp) {
+        return strategy.getResponses(clientResp);
+      })
+      .then(respond)
+在这段代码中，我们可以看到 strategy.reqsFetchParamsToBody(), strategy.getResponses() 和 strategy.clientMethod，正是之前 searchLooper 和 docLooper 传递的对象属性。而最终发送请求，同样用的是前面解释过的 es 这个 service。
+此外，Courier 还提供了自动刷新的控制功能：
+      self.fetchInterval = function (ms) {
+        searchLooper.ms(ms);
+        return this;
+      };
+      $rootScope.$watchCollection('timefilter.refreshInterval', function () {
+        var refreshValue = _.get($rootScope, 'timefilter.refreshInterval.value');
+        var refreshPause = _.get($rootScope, 'timefilter.refreshInterval.pause');
+        if (_.isNumber(refreshValue) && !refreshPause) {
+          self.fetchInterval(refreshValue);
+        } else {
+          self.fetchInterval(0);
+        }
+      });
+路径记忆功能的实现
+
+plugins/kibana/_apps.js 中，我们可以看到路径记忆功能是怎么实现的：
+    function appKey(app) {
+      return 'lastPath:' + app.id;
+    }
+    function assignPaths(app) {
+      app.rootPath = '/' + app.id;
+      app.lastPath = sessionStorage.get(appKey(app)) || app.rootPath;
+      return app.lastPath;
+    }
+    function getShow(app) {
+      app.show = app.order >= 0 ? true : false;
+    }
+    function setLastPath(app, path) {
+      app.lastPath = path;
+      return sessionStorage.set(appKey(app), path);
+    }
+
+    $scope.apps = Private(require('registry/apps'));
+    // initialize each apps lastPath (fetch it from storage)
+    $scope.apps.forEach(assignPaths);
+    $scope.apps.forEach(getShow);
+
+    function onRouteChange() {
+      var route = $location.path().split(/\//);
+      $scope.apps.forEach(function (app) {
+        if (app.active = app.id === route[1]) {
+          $rootScope.activeApp = app;
+        }
+      });
+      if (!$rootScope.activeApp || $scope.appEmbedded) return;
+      setLastPath($rootScope.activeApp, globalState.removeFromUrl($location.url()));
+    }
+
+    $rootScope.$on('$routeChangeSuccess', onRouteChange);
+    $rootScope.$on('$routeUpdate', onRouteChange);
+这里使用的 sessionStorage 是 HTML5 自带的新特性，这样，每次标签页切换的时候，都可以把 $location.url 保存下来。至于整个 Kibana 页面上标签页的初始状态，则通过 registry/apps.js 获取。
+插件的加载
+
+那么，各标签页插件是怎么进到 registry/apps 里的呢？
+之前我们已经说过，index.js 一开始加载完 kibana 以后，会挨个 require(configFile.plugins)。这个 configFile.plugins 按说就应该是列出来各个标签页了，但实际上，K4 的配置文件 server/config/kibana.yml 里并没有一个参数叫 plugins。所以，还得看看 server 端的实现了。
+和阅读 Kibana 主页入口一样，找到 server 端的主入口 server/index.js：
+var requirePlugins = require('./lib/plugins/require_plugins');
+var extendHapi = require('./lib/extend_hapi');
+function Kibana(settings, plugins) {
+  plugins = plugins || [];
+  this.server = new Hapi.Server();
+  extendHapi(this.server);
+  var config = this.server.config();
+  if (settings) config.set(settings);
+
+  this.plugins = [];
+  var externalPluginsFolder = config.get('kibana.externalPluginsFolder');
+  if (externalPluginsFolder) {
+    this.plugins = _([externalPluginsFolder])
+      .flatten()
+      .map(requirePlugins)
+      .flatten()
+      .value();
+  }
+  this.plugins = this.plugins.concat(plugins);
+根据这段代码，我们知道，K4 的 server 端，统一也有插件机制，由 server/lib/plugins/require_plugins.js 加载内置 server 插件，然后再加上外部 server 插件目录。requirePlugins 中查找内置插件的方法如下：
+  globPath = globPath || join(__dirname, '..', '..', 'plugins', '*', 'index.js');
+  return glob.sync(globPath).map(function (file) {
+    var module = require(file);
+    var regex = new RegExp('([^/]+)/index.js');
+
+    var matches = file.match(regex);
+    if (!module.name && matches) {
+      module.name = matches[1];
+    }
+也就是说，加载 server/plugins/ 下所有子目录的 index.js。目前 K4 自带的有：config, elasticsearch, static, status。分别用来返回 config 数据，代理 ES 请求，处理纯静态文件请求，显示 server 端各插件状态。
+我们具体看这个 server/plugins/config/index.js 的内容：
+var listPlugins = require('../../lib/plugins/list_plugins');
+
+module.exports = new kibana.Plugin({
+  init: function (server, options) {
+
+    server.route({
+      method: 'GET',
+      path: '/config',
+      handler: function (request, reply) {
+        var config = server.config();
+        reply({
+          kibana_index: config.get('kibana.index'),
+          default_app_id: config.get('kibana.defaultAppId'),
+          shard_timeout: config.get('elasticsearch.shardTimeout'),
+          plugins: listPlugins(server)
+        });
+      }
+    });
+
+  }
+});
+很明显，一个标准的 node.js 的 route，用来响应对 "/config" 这个地址的 GET 请求，返回一个哈希 JSON，其中就有 plugins。没错，我们前面说的 configFiles.plugins 就是从这里获得的。
+下面看这个 listPlugins 的实现。
+    var config = server.config();
+    var bundled_plugins = plugins(config.get('kibana.bundledPluginsFolder'));
+    var external_plugins = _(server.plugins).map(function (plugin, name) {
+      return plugin.self && plugin.self.publicPlugins || [];
+    }).flatten().value();
+这个 "bundledPluginsFolder" 也不是我们 kibana.yml 里存在的参数设置。所以，还得看上面这行 server.config() 了。回到最早先的 server/index.js 里，其实在 require_plugins 后面，还有一个 extend_hapi。Hapi 是 nodejs 的一个可扩展框架。我们看到 index.js 中，正是在 extendHapi(this.server) 后第一次获取了 server.config()。
+extendHapi 只有两行：
+  server.decorate('server', 'config', require('./config'));
+  server.decorate('server', 'loadKibanaPlugins', require('./plugins/load_kibana_plugins'));
+这个 server/lib/config/index.js 主要加载同目录下的：config.js 用来实现 Config 类，schema.js 用来实现具体的 Joi 对象。
+然后我们看这个 server/lib/config/schema.js，就会发现各种配置属性全在这里了~和插件路径相关的几行如下：
+var publicFolder = path.resolve(__dirname, '..', '..', 'public');
+if (!checkPath(publicFolder)) publicFolder = path.resolve(__dirname, '..', '..', '..', 'kibana');
+
+var bundledPluginsFolder = path.resolve(publicFolder, 'plugins');
+
+module.exports = Joi.object({
+  kibana: Joi.object({
+    bundledPluginsFolder: Joi.string().default(bundledPluginsFolder),
+这里有两个路径，因为一个是源码位置，一个是 grunt build 编译后的位置。就我们阅读源码来说，这个 __dirname/../../../kibana/plugins 就是我们最终找到的地方了，我们从 server 端源码里找了一圈，终于回到 kibana 前端页面的源码目录中，这就是 kibana/plugins 目录，自动加载其下所有子目录为内置插件。包括：
+dashboard
+discover
+doc
+kbn_vislib_vis_types
+kibana
+markdown_vis
+metric_vis
+settings
+table_vis
+vis_debug_spy
+visualize
+除 kibana 以外，随意进一个，(还记得 index.js 里是把 kibana 去除掉了吧)，比如 visualize，看 visualize/index.js 的内容，最底下有这么一段：
+  var apps = require('registry/apps');
+  apps.register(function VisualizeAppModule() {
+    return {
+      id: 'visualize',
+      name: 'Visualize',
+      order: 1
+    };
+  });
+其他目录也都一样。
+这个 registry/apps.js 主要是加载 registry/_registry.js，把注册的 app 存入 utils/indexed_array/index 的 IndexedArray 对象。对象主要有几个值：id, name, order。前面说到的路径记忆功能要用的两个方法，assignPaths 里就是用 app.id 设置 lastPath，而 getShow 里就是用 order 来判断是否展示在页面上。
+下一章，我们开始介绍官方提供的几个 apps。
+
+
+
+
+
+
+搜索页
+
+plugins/discover/index.js 中主要就是注册自己的 id, name, order 到上节最后说的 registry.apps 里。此外就是加载本 app 目录内的其他文件。依次说明如下：
+plugins/discover/saved_searches/saved_searches.js
+
+定义 savedSearches 这个 angular service，用来操作 kibana_index 索引里 search 这个类型下的数据；
+加载了 saved_searches/_saved_searches.js 提供的 savedSearch 这个 angular factory，这里定义了一个搜索 (search) 在 kibana_index 里的数据结构，包括 title, description, hits, column, sort, version 等字段(这部分内容，可以直接通过读取 Elasticsearch 中的索引内容看到，比阅读代码更直接，本章最后即专门介绍 kibana_index 中的数据结构)，看的是不是有点眼熟？没错，这个 savedSearch 就是继承了上一节我们介绍的那个 courier 的 savedObject：
+  module.factory('SavedSearch', function (courier) {
+    _.class(SavedSearch).inherits(courier.SavedObject);
+    function SavedSearch(id) {
+      ...
+还加载并注册了 plugins/settings/saved_object_registry.js，表示可以在 settings 里修改这里的 savedSearches 对象。
+plugins/discover/directives/timechart.js
+
+加载 components/vislib/index.js。
+提供 discoverTimechart 这个 angular directive，监听 "data" 并调用 vislib.Chart 对象绘图。
+vislib 是整个 Kibana4 可视化的实现部分，下一节会更详细的讲述。
+plugins/discover/components/field_chooser/field_chooser.js
+
+提供 discFieldChooser 这个 angular directive，其中监听 "fields" 并调用 fieldCalculator 计算常用字段排行，
+        $scope.$watchMulti([
+          '[]fieldCounts',
+          '[]columns',
+          '[]hits'
+        ], function (cur, prev) {
+          var newHits = cur[2] !== prev[2];
+          var fields = $scope.fields;
+          var columns = $scope.columns || [];
+          var fieldCounts = $scope.fieldCounts;
+
+          if (!fields || newHits) {
+            $scope.fields = fields = getFields();
+          }
+
+          _.chain(fields)
+          .each(function (field) {
+            field.displayOrder = _.indexOf(columns, field.name) + 1;
+            field.display = !!field.displayOrder;
+            field.rowCount = fieldCounts[field.name];
+          })
+          .sortBy(function (field) {
+            return (field.count || 0) * -1;
+          })
+          .groupBy(function (field) {
+            if (field.display) return 'selected';
+            return field.count > 0 ? 'popular' : 'unpopular';
+          })
+          .tap(function (groups) {
+            groups.selected = _.sortBy(groups.selected || [], 'displayOrder');
+            groups.popular = groups.popular || [];
+            groups.unpopular = groups.unpopular || [];
+            var extras = groups.popular.splice(config.get('fields:popularLimit'));
+            groups.unpopular = extras.concat(groups.unpopular);
+          })
+          .each(function (group, name) {
+            $scope[name + 'Fields'] = _.sortBy(group, name === 'selected' ? 'display' : 'name');
+          })
+          .commit();
+
+          $scope.fieldTypes = _.union([undefined], _.pluck(fields, 'type'));
+        });
+监听 "data" 并调用 $scope.details() 方法，
+提供 $scope.runAgg() 方法。方法中，根据字段的类型不同，分别可能使用 date_histogram/geohash_grid/terms 聚合函数，创建可视化模型，然后带着当前页这些设定——前面说过，各 app 之间通过 globalState 共享状态，也就是 URL 中的 ?_a=(...)。各 app 会通过 rison.decode($location.search()._a) 和 rison.encode($location.search()._a) 设置和读取——跳转到 "/visualize/create" 页面，相当于是这三个常用聚合的快速可视化操作。
+默认的 create 页的 rison 如下：
+          $location.path('/visualize/create').search({
+            indexPattern: $scope.state.index,
+            type: type,
+            _a: rison.encode({
+              filters: $scope.state.filters || [],
+              query: $scope.state.query || undefined,
+              vis: {
+                type: type,
+                aggs: [
+                  agg,
+                  {schema: 'metric', type: 'count', 'id': '2'}
+                ]
+              }
+            })
+          });
+之前章节的 url 示例中，读者如果注意的话，会发现 id 是从 2 开始的，原因即在此。
+加载 plugins/discover/components/field_chooser/lib/field_calculator.js ，提供 fieldCalculator.getFieldValueCounts() 方法，在 $scope.details() 中读取被点击的字段值的情况。
+加载 plugins/discover/components/field_chooser/discover_field.js，提供 discoverField 这个 angular directive，用于弹出浮层展示零时的 visualize(调用上一条提供的 $scope.details() 方法)，同时给被点击的字段加常用度；加载 plugins/discover/components/field_chooser/lib/detail_views/string.html 网页，用于浮层效果。网页中对 indexed 或 scripted 类型的字段，可以调用前面提到的 runAgg() 方法。
+        var detailsHtml = require('text!plugins/discover/components/field_chooser/lib/detail_views/string.html');
+        $scope.toggleDetails = function (field, recompute) {
+          if (_.isUndefined(field.details) || recompute) {
+            // This is inherited from fieldChooser
+            $scope.details(field, recompute);
+            detailScope.$destroy();
+            detailScope = $scope.$new();
+            detailScope.warnings = getWarnings(field);
+
+            detailsElem = $(detailsHtml);
+            $compile(detailsElem)(detailScope);
+            $elem.append(detailsElem);
+          } else {
+            delete field.details;
+            detailsElem.remove();
+          }
+        };
+加载并渲染 plugins/discover/components/field_chooser/field_chooser.html 网页。网页中使用了上一条提供的 discover-field。
+plugins/discover/controllers/discover.js
+
+加载了诸多 js，主要做了：
+为 "/discover/:id" 提供 route 并加载 plugins/discover/index.html 网页。
+提供 discover 这个 angular controller。
+加载 components/vis/vis.js 并在 setupVisualization 函数中绘制 histogram 图。
+      var visStateAggs = [
+        {
+          type: 'count',
+          schema: 'metric'
+        },
+        {
+          type: 'date_histogram',
+          schema: 'segment',
+          params: {
+            field: $scope.opts.timefield,
+            interval: $state.interval,
+            min_doc_count: 0
+          }
+        }
+      ];
+
+      $scope.vis = new Vis($scope.indexPattern, {
+        type: 'histogram',
+        params: {
+          addLegend: false,
+          addTimeMarker: true
+        },
+        listeners: {
+          click: function (e) {
+            timefilter.time.from = moment(e.point.x);
+            timefilter.time.to = moment(e.point.x + e.data.ordered.interval);
+            timefilter.time.mode = 'absolute';
+          },
+          brush: brushEvent
+        },
+        aggs: visStateAggs
+      });
+
+      $scope.searchSource.aggs(function () {
+        $scope.vis.requesting();
+        return $scope.vis.aggs.toDsl();
+      });
+
+
+
+
+
+visualize app
+
+index.js 中，首要当然是注册自己。此外，还加载两部分功能：plugins/visualize/editor/editor.js 和 plugins/visualize/wizard/wizard.js。然后定义了一个 route，默认跳转 /visualize 到 /visualize/step/1。
+editor
+
+editor.js 中也定义了两个 route，分别是 /visualize/create 和 /visualize/edit/:id。然后还定义了一个controller，叫 VisEditor，对应的 HTML 是 plugins/visualize/editor/editor.html，其中用到两个 directive，分别是 visualize 和 vis-editor-sidebar。
+其中 create 是先加载 registry/vis_types，并检查 $route.current.params.type 是否存在，然后调用 savedVisualizations.get($route.current.params) 方法；而 edit 是直接调用 savedVisualizations.get($route.current.params.id)。
+vis_types
+
+实际注册了 vis_types 的地方包括：
+plugins/table_vis/index.js
+plugins/metric_vis/index.js
+plugins/markdown_vis/index.js
+plugins/kbn_vislib_vis_types/index.js
+前三个是表单，最后一个是可视化图。内容如下：
+define(function (require) {
+  var visTypes = require('registry/vis_types');
+  visTypes.register(require('plugins/kbn_vislib_vis_types/histogram'));
+  visTypes.register(require('plugins/kbn_vislib_vis_types/line'));
+  visTypes.register(require('plugins/kbn_vislib_vis_types/pie'));
+  visTypes.register(require('plugins/kbn_vislib_vis_types/area'));
+  visTypes.register(require('plugins/kbn_vislib_vis_types/tileMap'));
+});
+以 histogram 为例解释一下 visTypes。下面的实现较长，我们拆成三部分：
+第一部分，加载并生成VislibVisType对象：
+define(function (require) {
+  return function HistogramVisType(Private) {
+    var VislibVisType = Private(require('components/vislib_vis_type/VislibVisType'));
+    var Schemas = Private(require('components/vis/Schemas'));
+
+    return new VislibVisType({
+      name: 'histogram',
+      title: 'Vertical bar chart',
+      icon: 'fa-bar-chart',
+      description: 'The goto chart for oh-so-many needs. Great for time and non-time data. Stacked or grouped, ' +
+      'exact numbers or percentages. If you are not sure which chart your need, you could do worse than to start here.',
+第二部分，histogram 可视化所接受的参数默认值以及对应的参数编辑页面：
+      params: {
+        defaults: {
+          shareYAxis: true,
+          addTooltip: true,
+          addLegend: true,
+          scale: 'linear',
+          mode: 'stacked',
+          times: [],
+          addTimeMarker: false,
+          defaultYExtents: false,
+          setYExtents: false,
+          yAxis: {}
+        },
+        scales: ['linear', 'log', 'square root'],
+        modes: ['stacked', 'percentage', 'grouped'],
+        editor: require('text!plugins/kbn_vislib_vis_types/editors/histogram.html')
+      },
+第三部分，histogram 可视化能接受的 Schema。一般来说，metric 数值聚合肯定是 Y 轴；bucket 聚合肯定是 X 轴；而在此基础上，Kibana4 还可以让 bucket 有不同效果，也就是 Schema 里的 segment(默认), group 和 split。根据效果不同，这里是各有增减的，比如饼图就不会有 group。
+      schemas: new Schemas([
+        {
+          group: 'metrics',
+          name: 'metric',
+          title: 'Y-Axis',
+          min: 1,
+          aggFilter: '!std_dev',
+          defaults: [
+            { schema: 'metric', type: 'count' }
+          ]
+        },
+        {
+          group: 'buckets',
+          name: 'segment',
+          title: 'X-Axis',
+          min: 0,
+          max: 1,
+          aggFilter: '!geohash_grid'
+        },
+        {
+          group: 'buckets',
+          name: 'group',
+          title: 'Split Bars',
+          min: 0,
+          max: 1,
+          aggFilter: '!geohash_grid'
+        },
+        {
+          group: 'buckets',
+          name: 'split',
+          title: 'Split Chart',
+          min: 0,
+          max: 1,
+          aggFilter: '!geohash_grid'
+        }
+      ])
+    });
+  };
+});
+这里使用的 VislibVisType 类，继承自 components/vis/VisType.js， VisType.js 内容如下：
+define(function (require) {
+  return function VisTypeFactory(Private) {
+    var VisTypeSchemas = Private(require('components/vis/Schemas'));
+
+    function VisType(opts) {
+      opts = opts || {};
+
+      this.name = opts.name;
+      this.title = opts.title;
+      this.responseConverter = opts.responseConverter;
+      this.hierarchicalData = opts.hierarchicalData || false;
+      this.icon = opts.icon;
+      this.description = opts.description;
+      this.schemas = opts.schemas || new VisTypeSchemas();
+      this.params = opts.params || {};
+      this.requiresSearch = opts.requiresSearch == null ? true : opts.requiresSearch; // Default to true unless otherwise specified
+    }
+
+    return VisType;
+  };
+});
+基本跟上面 histogram 的示例一致，注意这里面的 responseConverter 和 hierarchicalData，是给不同的 visType 做相应数据转换的。在实际的 VislibVisType 中，就有下面一段：
+      if (this.responseConverter == null) {
+        this.responseConverter = pointSeries;
+      }
+可见默认情况下，Kibana4 是尝试把聚合结果转换成点线图数组的。
+VislibVisType 中另一部分，则是扩展了一个自己的方法 createRenderbot，用来生成 VislibRenderbot 对象。这个类的实现在 components/vislib_vis_type/VislibRenderbot.js，其中最关键的几行是：
+    var buildChartData = Private(require('components/vislib_vis_type/buildChartData'));
+    ...
+    self.vislibVis = new vislib.Vis(self.$el[0], self.vislibParams);
+    ...
+    VislibRenderbot.prototype.buildChartData = buildChartData;
+    VislibRenderbot.prototype.render = function (esResponse) {
+      this.chartData = this.buildChartData(esResponse);
+      this.vislibVis.render(this.chartData);
+    };
+也就是说，分为两部分，buildChartData 方法和 vislib.Vis 对象。
+先来看 buildChartData 的实现：
+    var aggResponse = Private(require('components/agg_response/index'));
+    return function (esResponse) {
+      var vis = this.vis;
+      if (vis.isHierarchical()) {
+        return aggResponse.hierarchical(vis, esResponse);
+      }
+      var converted = convertTableGroup(vis, tableGroup);
+      return converted;
+    };
+
+    function convertTable(vis, table) {
+      return vis.type.responseConverter(vis, table);
+    }
+又看到 responseConverter 和 hierarchical 两个熟悉的字眼了，不过这回是另一个对象的方法，那么我们继续跟踪下去，看看这个 aggResponse 类是怎么回事：
+define(function (require) {
+  return function NormalizeChartDataFactory(Private) {
+    return {
+      hierarchical: Private(require('components/agg_response/hierarchical/build_hierarchical_data')),
+      pointSeries: Private(require('components/agg_response/point_series/point_series')),
+      tabify: Private(require('components/agg_response/tabify/tabify')),
+      geoJson: Private(require('components/agg_response/geo_json/geo_json'))
+    };
+  };
+});
+然后我们看 vislib.Vis 对象，定义在 components/vislib/vis.js 里。同时我们注意到，定义 vislib 这个服务的 components/vislib/index.js 里，还定义了一个服务，叫 d3，没错，我们离真正的绘图越来越近了。
+vis.js 中加载了 components/vislib/lib/handler/handler_types 和 components/vislib/visualizations/vis_types：
+    var handlerTypes = Private(require('components/vislib/lib/handler/handler_types'));
+    var chartTypes = Private(require('components/vislib/visualizations/vis_types'));
+chartTypes 用来定义图：
+    function Vis($el, config) {
+      if (!(this instanceof Vis)) {
+        return new Vis($el, config);
+      }
+      Vis.Super.apply(this, arguments);
+      this.el = $el.get ? $el.get(0) : $el;
+      this.ChartClass = chartTypes[config.type];
+      this._attr = _.defaults({}, config || {}, {});
+    }
+handlerTypes 用来绘制图：
+    Vis.prototype.render = function (data) {
+      var chartType = this._attr.type;
+      this.data = data;
+      this.handler = handlerTypes[chartType](this) || handlerTypes.column(this);
+      this._runOnHandler('render');
+    };
+    Vis.prototype._runOnHandler = function (method) {
+      this.handler[method]();
+    };
+components/vislib/lib/handler/handler_types 中，根据不同的 vis_types，分别返回不同的处理对象，主要出自 components/vislib/lib/handler/types/point_series, components/vislib/lib/handler/types/pie 和 components/vislib/lib/handler/types/tile_map。比如 histogram 就是 pointSeries.column。可以看到 point_series.js 中，对 column 是加上了 zeroFill:true, expandLastBucket:true 两个参数调用 create() 方法。而 create() 方法里的 new Handler() 传递的，显然就是给 d3.js 的绘图参数。而 Handler 具体初始化和渲染过程，则在被加载的 components/vislib/lib/handler/handler.js 中。Handler.prototype.render 中如下一段：
+d3.select(this.el)
+.selectAll('.chart')
+.each(function (chartData) {
+  var chart = new self.ChartClass(self, this, chartData);
+  var enabledEvents;
+  if (chart.events.dispatch) {
+    enabledEvents = self.vis.eventTypes.enabled;
+    d3.rebind(chart, chart.events.dispatch, 'on');
+    if (enabledEvents.length) {
+      enabledEvents.forEach(function (event) {
+        self.enable(event, chart);
+      });
+    }
+  }
+  charts.push(chart);
+  chart.render();
+  });
+};
+这里面的 ChartClass() 就是在 vislib.js 中加载了的 components/vislib/visualizations/vis_types 。它会根据不同的 vis_types，分别返回不同的可视化对象，包括：components/vislib/visualizations/column_chart, components/vislib/visualizations/pie_chart, components/vislib/visualizations/line_chart, components/vislib/visualizations/area_chart 和 components/vislib/visualizations/tile_map。
+这些对象都有同一个基类：components/vislib/visualizations/_chart，其中有这么一段：
+    Chart.prototype.render = function () {
+      var selection = d3.select(this.chartEl);
+
+      selection.selectAll('*').remove();
+      selection.call(this.draw());
+    };
+也就是说，各个可视化对象，只需要用 d3.js 或者其他绘图库，完成自己的 draw() 函数，就可以了！
+draw 函数的实现一般格式是下面这样：
+    LineChart.prototype.draw = function () {
+      var self = this;
+      var $elem = $(this.chartEl);
+      var margin = this._attr.margin;
+      var elWidth = this._attr.width = $elem.width();
+      var elHeight = this._attr.height = $elem.height();
+      var width;
+      var height;
+      var div;
+      var svg;
+      return function (selection) {
+        selection.each(function (data) {
+          var el = this;
+          div = d3.select(el);
+          width = elWidth - margin.left - margin.right;
+          height = elHeight - margin.top - margin.bottom;
+          svg = div.append('svg')
+          .attr('width', width + margin.left + margin.right)
+          .attr('height', height + margin.top + margin.bottom)
+          .append('g')
+          .attr('transform', 'translate(' + margin.left + ',' + margin.top + ')');
+
+          // 处理 data 到 svg 上
+          ...
+          return svg;
+        });
+      };
+    };
+当然，为了代码逻辑，有些比较复杂的绘制，还是会继续拆分成其他文件的。比如之前已经在 v3/bettermap 章节介绍过的 leaflet 地图，在 v4 中，就是在 components/vislib/visualizations/tile_map 里加载的 components/vislib/visualizations/_map.js 完成。还想继续使用高德地图的读者，可以修改该文件中 tileLayer 变量的参数定义(https://otile{s}-s.mqcdn.com/tiles/1.0.0/map/{z}/{x}/{y}.jpeg)即可。
+从数据到 d3 渲染，要经过的主要流程就是这样。如果打算自己亲手扩展一个新的可视化方案的读者，可以具体参考我实现的 sankey 图：https://github.com/chenryn/kibana4/commit/4e0bcbeb4c8fd94807c3a0b1df2ac6f56634f9a5
+savedVisualizations
+
+这个类在 plugins/visualize/saved_visualizations/saved_visualizations.js 里定义。其中分三步，加载 plugins/visualize/saved_visualizations/_saved_vis，注册到 plugins/settings/saved_object_registry，以及定义一个 angular service 叫 savedVisualizations。
+plugins/visualize/saved_visualizations/_saved_vis 里是定义一个 angular factory 叫 SavedVis。这个类继承自 courier.SavedObject，主要有 _getLinkedSavedSearch 方法调用 savedSearches 获取在 discover 中保存的 search 对象，以及 visState 属性。该属性保存了 visualize 定义的 JSON 数据。
+savedVisualizations 里主要就是初始化 SavedVis 对象，以及提供了一个 find 搜索方法。整个实现和上一节讲的 savedSearches 基本一样，就不再讲了。
+Visualize
+
+这个 directive 在 components/visualize/visualize.js 中定义。而我们可以上拉看到的请求、响应、表格、性能数据，则使用的是 components/visualize/spy/spy.js 中定义的另一个 directive visualizeSpy。
+visualize.html 上定义了一个普通的 div，其 class 为 visualize-chart，在 visualize.js 中，通过 getter('.visualize-chart') 方法获取 div 元素：
+        function getter(selector) {
+          return function () {
+            var $sel = $el.find(selector);
+            if ($sel.size()) return $sel;
+          };
+        }
+        var getVisEl = getter('.visualize-chart');
+然后创建一个 renderbot：
+        $scope.$watch('vis', prereq(function (vis, oldVis) {
+          var $visEl = getVisEl();
+          if (!$visEl) return;
+
+          if (!attr.editableVis) {
+            $scope.editableVis = vis;
+          }
+
+          if (oldVis) $scope.renderbot = null;
+          if (vis) $scope.renderbot = vis.type.createRenderbot(vis, $visEl);
+        }));
+最后在 searchSource 对象变化，即有新的搜索响应返回时，完成渲染：
+        $scope.$watch('searchSource', prereq(function (searchSource) {
+          if (!searchSource || attr.esResp) return;
+          searchSource.onResults().then(function onResults(resp) {
+            if ($scope.searchSource !== searchSource) return;
+
+            $scope.esResp = resp;
+
+            return searchSource.onResults().then(onResults);
+          }).catch(notify.fatal);
+          searchSource.onError(notify.error).catch(notify.fatal);
+        }));
+        $scope.$watch('esResp', prereq(function (resp, prevResp) {
+          if (!resp) return;
+          $scope.renderbot.render(resp);
+        }));
+VisEditorSidebar
+
+这个 directive 在 plugins/visualize/editor/sidebar.js 中定义。对应的 HTML 是 plugins/visualize/editor/sidebar.html，其中又用到两个 directive，分别是 vis-editor-agg-group 和 vis-editor-vis-options。它们分别有 sidebar.js 加载的 plugins/visualize/editor/agg_group 和 plugins/visualize/editor/vis_options 提供。然后继续 HTML -> directive 下去，基本上 plugins/visualize/editor/ 目录下那堆 agg*.js 和 agg*.html 都是做这个用的。
+其中比较有意思的，应该算是 agg_add.js。我们都知道，K4 最大的特点就是可以层叠子聚合，这个操作就是在这里完成的：
+  .directive('visEditorAggAdd', function (Private) {
+    var AggConfig = Private(require('components/vis/AggConfig'));
+    return {
+      restrict: 'E',
+      template: require('text!plugins/visualize/editor/agg_add.html'),
+      controllerAs: 'add',
+      controller: function ($scope) {
+        var self = this;
+        self.submit = function (schema) {
+          var aggConfig = new AggConfig($scope.vis, {
+            schema: schema
+          });
+          aggConfig.brandNew = true;
+
+          $scope.vis.aggs.push(aggConfig);
+        };
+      }
+    };
+  });
+另一个比较重要的是 plugins/visualize/editor/agg_params.js。其中加载了 components/agg_types/index.js，又监听了 "agg.type" 变量，也就是实现了选择不同的 agg_types 时，提供不同的 agg_params 选项。比方说，选择 date_histogram，字段就只能是 @timestamp 这种 date 类型的字段。
+components/agg_types/index.js 中定义了所有可选 agg_types 的类。其中 metrics 包括：count, avg, sum, min, max, std_deviation, cardinality, percentiles, percentile_rank，具体实现分别存在 components/agg_types/metrics/ 目录下的同名.js文件里；buckets 包括：date_histogram, histogram, range, date_range, ip_range, terms, filters, significant_terms, geo_hash，具体实现分别存在 components/agg_types/buckets/ 目录下的同名.js文件里。
+这些类定义中，都有比较类似的格式，其中 params 数组的第一个元素，都是类似这样：
+{
+  name: 'field',
+  filterFieldTypes: 'string'
+}
+terms.js 里还多了一行 scriptable: true，而且 filterFieldTypes 是数组。
+        {
+          name: 'field',
+          scriptable: true,
+          filterFieldTypes: ['number', 'boolean', 'date', 'ip',  'string']
+        }
+这个 filterFieldTypes 在 components/vis/_agg_config.js 中，通过 fieldTypeFilter(this.vis.indexPattern.fields, fieldParam.filterFieldTypes); 得到可选字段列表。fieldTypeFilter 的具体实现在 filters/filed_type.js 中。
+wizard
+
+wizard.js 中提供两个 route 和对应的 controller。分别是 /visualize/step/1 对应 VisualizeWizardStep1，/visualize/step/2 对应 VisualizeWizardStep2。这两个的最终结果，都是跳转到 /visualize/create?type=* 下。+
+
+
+
+
+
+dashboard app
+
+plugins/dashboard/index.js 结构跟 visualize 类似，注册到 registry；设置两个调用 savedDashboards.get() 方法的 routes，提供一个叫 dashboard-app 的 directive。
+savedDashboards 由 plugins/dashboard/services/saved_dashboard.js 提供，调用 es.search 获取数据，生成 savedDashboard 对象，这个对象同样也是继承 savedObject，主要内容是 panelsJSON 数组字段。实现如下：
+  module.factory('SavedDashboard', function (courier) {
+    _.class(SavedDashboard).inherits(courier.SavedObject);
+    function SavedDashboard(id) {
+      courier.SavedObject.call(this, {
+        type: SavedDashboard.type,
+        mapping: SavedDashboard.mapping,
+        searchSource: SavedDashboard.searchsource,
+        id: id,
+        defaults: {
+          title: 'New Dashboard',
+          hits: 0,
+          description: '',
+          panelsJSON: '[]',
+          version: 1,
+          timeRestore: false,
+          timeTo: undefined,
+          timeFrom: undefined
+        },
+        clearSavedIndexPattern: true
+      });
+    }
+可以注意到，这个 panelsJSON 是一个字符串，这跟之前 kibana_index 提到的是一致的。
+dashboard-app 中，最重要的功能，是监听搜索框和过滤条件的变更，我们可以看到 init 函数中有下面这段：
+        function updateQueryOnRootSource() {
+          var filters = queryFilter.getFilters();
+          if ($state.query) {
+            dash.searchSource.set('filter', _.union(filters, [{
+              query: $state.query
+            }]));
+          } else {
+            dash.searchSource.set('filter', filters);
+          }
+        }
+
+        $scope.$listen(queryFilter, 'update', function () {
+          updateQueryOnRootSource();
+          $state.save();
+        });
+在 index.html 里，实际承载面板的，是下面这行：
+  <dashboard-grid></dashboard-grid>
+这也是一个 angular directive，通过加载 plugins/dashboard/directives/grid.js 引入的。其中添加面板相关的代码有两部分：
+          $scope.$watchCollection('state.panels', function (panels) {
+            var currentPanels = gridster.$widgets.toArray().map(function (el) {
+              return getPanelFor(el);
+            });
+            var added = _.difference(panels, currentPanels);
+            if (added.length) added.forEach(addPanel);
+          });
+这段用来监听 $state.panels 数组，一旦有新增面板，调用 addPanel 函数。同理也有删除面板的，这里就不重复贴了。
+而 addPanel 函数的实现大致如下：
+        var addPanel = function (panel) {
+          _.defaults(panel, {
+            size_x: 3,
+            size_y: 2
+          });
+          panel.$scope = $scope.$new();
+          panel.$scope.panel = panel;
+          panel.$el = $compile('<li><dashboard-panel></li>')(panel.$scope);
+          gridster.add_widget(panel.$el, panel.size_x, panel.size_y, panel.col, panel.row);
+        };
+这里即验证了之前 kibana_inex 小节中讲的 gridster 默认大小，又引入了一个新的 directive，叫 dashboard-panel。
+dashboard-panel 在 plugins/dashboard/components/panel/panel.js 中实现，其中使用了 plugins/dashboard/components/panel/panel.html 页面。页面最后是这么一段：
+ <visualize ng-switch-when="visualization"
+    vis="savedObj.vis"
+    search-source="savedObj.searchSource"
+    class="panel-content">
+  </visualize>
+
+  <doc-table ng-switch-when="search"
+    search-source="savedObj.searchSource"
+    sorting="panel.sort"
+    columns="panel.columns"
+    class="panel-content"
+    filter="filter">
+  </doc-table>
+这里使用的 savedObj 对象，来自 plugins/dashboard/components/panel/lib/load_panel.js 获取的 savedSearch 或者 savedVisualization。获得的对象，以 savedVisualization 为例：
+define(function (require) {
+  return function visualizationLoader(savedVisualizations, Private) { // Inject services here
+    return function (panel, $scope) {
+      return savedVisualizations.get(panel.id)
+        .then(function (savedVis) {
+          savedVis.vis.listeners.click = filterBarClickHandler($scope.state);
+          savedVis.vis.listeners.brush = brushEvent;
+
+          return {
+            savedObj: savedVis,
+            panel: panel,
+            editUrl: savedVisualizations.urlFor(panel.id)
+          };
+        });
+    };
+  };
+});
+而 visualize 和 doc-table 两个 directive。这两个正是之前在 visualize 和 discover 插件解析里提到过的，在 components/ 底下实现。+
+
+
+
+
+settings
+
+plugins/settings/index.js 结构跟 visualize 类似，注册到 registry；设置默认跳转到 /settings/indices 的 route，提供一个 kbnSettingsApp 的directive。其中关联到 plugins/settings/sections/index.js 内注册的 indices, advanced, objects, about 四个区块。
+
+因为结构基本类似，这里只介绍一个比较有趣的地方。 indices 中的 scripted_field，原本的设计中，是利用 groovy sandbox 来支持的。但是就在 kibana 4 正式版要发布的几天前，groovy sandbox 出安全漏洞，Elasticsearch 紧急取消掉了 groovy 的默认开启设置。同理，plugins/settings/sections/indices/scripted_fields/index.js 里也改成了 "expression" 引擎。
+
+但是，如果私有集群在防火墙内部，依然可以开启 groovy sandbox 的，其实还是可以继续使用的。在稍后的章节中，我们会介绍如何直接修改 kibana_index 完成。而这里，我们则深入理解相关代码，介绍为什么不用修改 kibana 4 源码，就能继续使用。
+
+scripted field 的修改页面，在 plugins/settings/sections/indices/_scripted_fields.js。这里面的 $scope.columns 数组，包括 name, script, type, popularity, controls 五列，也就是我们在页面上看到的内容。看起来似乎没有定义选用的引擎。
+
+那往上一层，看 scripted field 相关入口 plugins/settings/sections/indices/scripted_fields/index.js 里，在 $scope.submit() 方法里，我们可以看到下面一段代码：
+
+var field = _.defaults($scope.scriptedField, {
+  type: 'number',
+  lang: 'expression'
+});
+try {
+  if (createMode) {
+    $scope.indexPattern.addScriptedField(field.name, field.script, field.type, field.lang);
+  } else {
+    $scope.indexPattern.save();
+  }
+没错，添加 scripted field 到 index pattern 的过程就是这里！我们可以看到，这里是有 field.lang 设定的。只不过其默认值是 expression 而已。
+
+现在就去看 plugins/settings/sections/indices/scripted_fields/index.html 里关于 $scope.scriptedField 是怎么处理的。
+
+<form name="scriptedFieldForm" ng-submit="submit()">
+  <div class="form-group">
+    <label>Name</label>
+    <input required type="text" ng-model="scriptedField.name" class="form-control span12">
+  </div>
+  <div class="form-group">
+    <textarea required class="scripted-field-script form-control span12" ng-model="scriptedField.script"></textarea>
+  </div>
+</form>
+<div class="form-group">
+  <button class="btn btn-primary" ng-click="goBack()">Cancel</button>
+  <button class="btn btn-success" ng-click="submit()" ng-disabled="scriptedFieldForm.$invalid">
+    Save Scripted Field
+  </button>
+</div>
+没错。HTML 里只提供了 name 和 script 两个值的输入框！也就是说，kibana 4 只是不提供让你输入 groovy 到 field.lang 的文本框而已。
+
+所以，如果你有随时定义 scripted field 的需求，又嫌弃每次 curl 直接修改 kibana_index 太麻烦还可能出错，那么你只需要稍微修改几处 kibana4 代码就够了：
+
+plugins/settings/sections/indices/scripted_fields/index.html 里提供对 scriptedField.lang 和 scriptedField.type 的输入框；
+plugins/settings/sections/indices/_scripted_fields.js 里给 $scope.columns 数组和 addRow 方法多加上 field.lang 字段的展示。
+
+
+
+
+
+Kibana4 插件
+
+Kibana 从 4.2 以后，引入了完善的插件化机制。目前分为 app，vistype，fieldformatter、spymode 等多种插件类型。原先意义上的 Kibana 现在已经变成了 Kibana 插件框架下的一个默认 app 类型插件。
+本节用以讲述 Kibana4 插件的安装使用和定制开发。
+部署命令
+
+安装 Kibana 插件有两种方式：
+通过 Elastic.co 公司的下载地址：
+bin/kibana plugin --install <org>/<package>/<version>
+version 是可选项。这种方式目前适用于官方插件，比如：
+bin/kibana plugin -i elasticsearch/marvel/latest
+bin/kibana plugin -i elastic/timelion
+通过 zip 压缩包：
+支持本地和远程 HTTP 下载两种，比如：
+bin/kibana plugin --install sense -u file:///tmp/sense-2.0.0-beta1.tar.gz
+bin/kibana plugin -i heatmap -u https://github.com/stormpython/heatmap/archive/master.zip
+bin/kibana plugin -i kibi_timeline_vis -u https://github.com/sirensolutions/kibi_timeline_vis/raw/0.1.2/target/kibi_timeline_vis-0.1.2.zip
+bin/kibana plugin -i oauth2 -u https://github.com/trevan/oauth2/releases/download/0.1.0/oauth2-0.1.0.zip
+目前已知的 Kibana4 Plugin 列表见官方 WIKI：https://github.com/elastic/kibana/wiki/Known-Plugins
+注意：kibana 目前版本变动较大，不一定所有插件都可以成功使用
+查看与切换
+
+插件安装完成后，可以在 Kibana 页面上通过 app switcher 界面切换。界面如下：
+
+
+默认插件
+
+除了 Kibana 本身以外，其实还有一些其他默认插件，这些插件本身在 app switcher 页面上是隐藏的，但是可以通过 url 直接访问到，或者通过修改插件的 index.js 配置项让它显示出来。
+这些隐藏的默认插件中，最有可能被用到的，是 statusPage 插件。
+我们可以通过 http://localhost:5601/status 地址访问这个插件的页面：
+
+
+页面会显示 Kibana 的运行状态。包括 nodejs 的内存使用、负载、响应性能，以及各插件的加载情况。
+
+
+
+
+
+timelion 介绍
+
+ES2.0 开始提供了一个崭新的 pipeline aggregation 特性，但是 Kibana 似乎并没有立刻跟进这方面的意思，相反，Elastic 公司推出了另一个实验室产品：]Timelion。
+timelion 的用法在官博里已经有介绍。尤其是最近两篇如何用 timelion 实现异常告警的文章，更是从 ES 的 pipeline aggregation 细节和场景一路讲到 timelion 具体操作，我这里几乎没有再重新讲一遍 timelion 操作入门的必要了。不过，官方却一直没有列出来 timelion 支持的请求语法的文档，而是在页面上通过点击图标的方式下拉帮助。
+
+
+timelion 页面设计上，更接近 Kibana3 而不是 Kibana4。比如 panel 分布是通过设置几行几列的数目来固化的；query 框是唯一的，要修改哪个 panel 的 query，鼠标点选一下 panel，query 就自动切换成这个 panel 的了。
+为了方便大家在上手之前了解 timelion 能做到什么，今天特意把 timelion 的请求语法所支持的函数分为几类，罗列如下：
+可视化效果类
+
+.bars($width): 用柱状图展示数组
+.lines($width, $fill, $show, $steps): 用折线图展示数组
+.points(): 用散点图展示数组
+.color("#c6c6c6"): 改变颜色
+.hide(): 隐藏该数组
+.label("change from %s"): 标签
+.legend($position, $column): 图例位置
+.yaxis($yaxis_number, $min, $max, $position): 设置 Y 轴属性，.yaxis(2) 表示第二根 Y 轴
+数据运算类
+
+.abs(): 对整个数组元素求绝对值
+.precision($number): 浮点数精度
+.testcast($count, $alpha, $beta, $gamma): holt-winters 预测
+.cusum($base): 数组元素之和，再加上 $base
+.derivative(): 对数组求导数
+.divide($divisor): 数组元素除法
+.multiply($multiplier): 数组元素乘法
+.subtract($term): 数组元素减法
+.sum($term): 数组元素加法
+.add(): 同 .sum()
+.plus(): 同 .sum()
+.first(): 返回第一个元素
+.movingaverage($window): 用指定的窗口大小计算移动平均值
+.mvavg(): .movingaverage() 的简写
+.movingstd($window): 用指定的窗口大小计算移动标准差
+.mvstd(): .movingstd() 的简写
+数据源设定类
+
+.elasticsearch(): 从 ES 读取数据
+.es(q="querystring", metric="cardinality:uid", index="logstash-*", offset="-1d"): .elasticsearch() 的简写
+.graphite(metric="path.to.*.data", offset="-1d"): 从 graphite 读取数据
+.quandl(): 从 quandl.com 读取 quandl 码
+.worldbank_indicators(): 从 worldbank.org 读取国家数据
+.wbi(): .worldbank_indicators() 的简写
+.worldbank(): 从 worldbank.org 读取数据
+.wb(): .worldbanck() 的简写
+以上所有函数，都在 series_functions 目录下实现，每个 js 文件实现一个 TimelionFunction 功能。
+
+
+
+
+
+Kibana4 可视化插件开发
+
+上一节，我们看到了一个完整的 Kibana4 插件的官方用例。一般来说，我们不太会需要自己从头到尾写一个 angular app 出来。最常见的情况，应该是在 Kibana 功能的基础上做一定的二次开发和扩展。其中，可视化效果应该是重中之重。本节，以一个红绿灯效果，演示如何开发一个 Kibana4 可视化插件。
+
+
+插件目录生成
+
+Kibana 开发组提供了一个简单的工具，辅助我们生成一个 Kibana4 插件的目录结构：
+npm install -g yo
+npm install -g generator-kibana-plugin
+mkdir traffic_light_vis
+cd traffic_light_vis
+yo kibana-plugin
+但是这个是针对完整的 app 扩展的，很多目录对于可视化插件来说，并没有用。所以，我们可以自己手动创建目录：
+mkdir -p traffic_light_vis/public
+cd traffic_light_vis
+touch index.js package.json
+cd public
+touch traffic_light_vis.html traffic_light_vis.js traffic_light_vis.less traffic_light_vis_controller.js traffic_light_vis_params.html
+其中 index.js 内容如下：
+'use strict';
+module.exports = function (kibana) {
+    return new kibana.Plugin({
+        uiExports: {
+            visTypes: ['plugins/traffic_light_vis/traffic_light_vis']
+        }
+    });
+};
+package.json 内容如下：
+{
+    "name": "traffic_light_vis",
+    "version": "0.1.0",
+    "description": "An awesome Kibana plugin for red/yellow/green status visualize"
+}
+这两个基础文件格式都比较固定，除了改个名就基本 OK 了。
+然后我们看最关键的可视化对象定义 public/traffic_light_vis.js 内容：
+define(function (require) {
+  // 加载样式表
+  require('plugins/traffic_light_vis/traffic_light_vis.less');
+  // 加载控制器程序
+  require('plugins/traffic_light_vis/traffic_light_vis_controller');
+  // 注册到 vis_types
+  require('ui/registry/vis_types').register(TrafficLightVisProvider);
+
+  function TrafficLightVisProvider(Private) {
+    // TemplateVisType 基类，适用于基础的 metric 和数据表格式的可视化定义。实际上，Kibana4 的 metric_vis 和 table_vis 就继承自这个，
+    // Kibana4 还有另一个基类叫 VisLibVisType，其他使用 D3.js 做可视化的，继承这个。
+    var TemplateVisType = Private(require('ui/template_vis_type/TemplateVisType'));
+    var Schemas = Private(require('ui/Vis/Schemas'));
+
+    // 模板化的 visType 对象定义，用来配置和展示
+    return new TemplateVisType({
+      name: 'traffic_light',
+      // 显示在 visualize 选择列表里的名称，描述，小图标
+      title: 'Traffic Light',
+      description: 'Great for one-glance status readings, the traffic light visualization expresses in green / yellow / red the position of a single value in relation to low and high thresholds.',
+      icon: 'fa-car',
+      // 可视化效果模板页面
+      template: require('plugins/traffic_light_vis/traffic_light_vis.html'),
+      params: {
+        defaults: {
+          fontSize: 60
+        },
+        // 编辑参数的页面
+        editor: require('plugins/traffic_light_vis/traffic_light_vis_params.html')
+      },
+      // 在编辑页面上可以选择的 aggregation 类型。
+      schemas: new Schemas([
+        {
+          group: 'metrics',
+          name: 'metric',
+          title: 'Metric',
+          min: 1,
+          defaults: [
+            { type: 'count', schema: 'metric' }
+          ]
+        }
+      ])
+    });
+  }
+
+  // export the provider so that the visType can be required with Private()
+  return TrafficLightVisProvider;
+});
+然后就是可视化效果的模板页面了，traffic_light_vis.html 毫无疑问也是一个 angular 风格的：
+<div ng-controller="TrafficLightVisController" class="traffic-light-vis">
+    <div class="metric-container" ng-repeat="metric in metrics">
+        <div class="traffic-light-container" ng-style="{'width': vis.params.width+'px', 'height': (2.68 * vis.params.width)+'px' }">
+            <div class="traffic-light">
+                <div class="light red" ng-class="{'on': (!vis.params.invertScale && metric.value <= vis.params.redThreshold) || (vis.params.invertScale && metric.value >= vis.params.redThreshold) }"></div>
+                <div class="light yellow" ng-class="{'on': (!vis.params.invertScale && metric.value > vis.params.redThreshold && metric.value < vis.params.greenThreshold) || (vis.params.invertScale && metric.value < vis.params.redThreshold && metric.value > vis.params.greenThreshold) }"></div>
+                <div class="light green" ng-class="{'on': (!vis.params.invertScale && metric.value >= vis.params.greenThreshold) || (vis.params.invertScale && metric.value <= vis.params.greenThreshold) }"></div>
+            </div>
+        </div>
+        <div>{{metric.label}}</div>
+    </div>
+</div>
+这里可以看到：
+把 div 绑定到了 TrafficLightVisController 控制器上，这个也是之前在 js 里已经加载过的。
+通过 ng-repeat 循环展示不同的 metric，也就是说模板渲染的时候，收到的是一个 metrics 数组。这个来源当然是在控制器里。
+然后具体的数据判断，即什么灯亮什么灯灭，通过了 vis.params.* 的运算判断。这些变量当然是在编辑页面里设置的。
+所以下一步看编辑页面 traffic_light_vis_params.html：
+<div class="form-group">
+  <label>Traffic light width - {{ vis.params.width }}px</label>
+  <input type="range" ng-model="vis.params.width" class="form-control" min="30" max="120"/>
+</div>
+<div class="form-group">
+  <label>Red threshold <span ng-bind-template="({{!vis.params.invertScale ? 'below':'above'}} this value will be red)"></span></label>
+  <input type="number" ng-model="vis.params.redThreshold" class="form-control"/>
+</div>
+<div class="form-group">
+  <label>Green threshold <span ng-bind-template="({{!vis.params.invertScale ? 'above':'below'}} this value will be green)"></span></label>
+  <input type="number" ng-model="vis.params.greenThreshold" class="form-control"/>
+</div>
+<div class="form-group">
+  <label>
+    <input type="checkbox" ng-model="vis.params.invertScale">
+    Invert scale
+  </label>
+</div>
+内容很简单，就是通过 ng-model 设置绑定变量，跟之前 HTML 里的联动。
+最后一步，看控制器 traffic_light_vis_controller.js：
+define(function (require) {
+
+  var module = require('ui/modules').get('kibana/traffic_light_vis', ['kibana']);
+
+  module.controller('TrafficLightVisController', function ($scope, Private) {
+    var tabifyAggResponse = Private(require('ui/agg_response/tabify/tabify'));
+
+    var metrics = $scope.metrics = [];
+
+    $scope.processTableGroups = function (tableGroups) {
+      tableGroups.tables.forEach(function (table) {
+        table.columns.forEach(function (column, i) {
+          metrics.push({
+            label: column.title,
+            value: table.rows[0][i]
+          });
+        });
+      });
+    };
+
+    $scope.$watch('esResponse', function (resp) {
+      if (resp) {
+        metrics.length = 0;
+        $scope.processTableGroups(tabifyAggResponse($scope.vis, resp));
+      }
+    });
+  });
+});
+要点在：
+
+$scope.$watch('esResponse', function(resp){}) 监听整个页面的请求响应，在有新数据过来的时候更新页面效果；
+agg_response/tabify/tabify 把响应结果转换成二维表格形式。
+最后加上一段样式表，这里就不贴了，见：https://github.com/logzio/kibana-visualizations/blob/master/traffic_light_vis/traffic_light_vis.less。
+本节介绍的示例，出自 logz.io 官方博客和对应的 github 开源项目。logz.io 是基于 Kibana4.1 写的插件。我这里修正成了基于最新 Kibana4.3 的实现。
+
+
+
+
+Kibana4 服务器端插件开发
+
+上一节介绍了如何给 Kibana4 开发浏览器端的可视化插件。Kibana4 跟 Kibana3 比，最大的一个变化是有了独立的 node.js 服务器端。那么同样的，也就有了服务器端的 Kibana4 插件。最明显的一个场景：我们可以在 node.js 里跑定时器做 Elasticsearch 的告警逻辑了！
+本节示例一个最基础的 Kibana4 告警插件开发。只演示基础的定时器和 Kibana4 插件规范，实际运用中，肯定还涉及历史记录，告警项配置更新等。请读者不要直接 copy-paste。
+首先，我们尽量沿袭 Elastic 官方的 watcher 产品的告警配置设计。也新建一个索引，里面是具体的配置内容：
+# curl -XPUT http://127.0.0.1:9200/watcher/watch/error_status -d'
+{
+  "trigger": {
+    "schedule" : { "interval" : "60"  }
+  },
+  "input" : {
+    "search" : {
+      "request" : {
+        "indices" : [ "<logstash-{now/d}>", "<logstash-{now/d-1d}>"  ],
+        "body" : {
+          "query" : {
+            "filtered" : {
+              "query" : { "match" : { "host" : "MacBook-Pro"  } },
+              "filter" : { "range" : { "@timestamp" : { "from" : "now-5m"  } } }
+            }
+          }
+        }
+      }
+    }
+  },
+  "condition" : {
+    "script" : {
+      "script" : "payload.hits.total > 0"
+    }
+  },
+  "transform" : {
+    "search" : {
+      "request" : {
+        "indices" : [ "<logstash-{now/d}>", "<logstash-{now/d-1d}>"  ],
+        "body" : {
+          "query" : {
+            "filtered" : {
+              "query" : { "match" : { "host" : "MacBook-Pro"  } },
+              "filter" : { "range" : { "@timestamp" : { "from" : "now-5m"  } } }
+            }
+          },
+          "aggs" : {
+            "topn" : {
+              "terms" : {
+                "field" : "path.raw"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "actions" : {
+    "email_admin" : {
+    "throttle_period" : "15m",
+    "email" : {
+      "to" : "admin@domain",
+      "subject" : "Found {{payload.hits.total}} Error Events",
+      "priority" : "high",
+      "body" : "Top10 paths:\n{{#payload.aggregations.topn.buckets}}\t{{key}} {{doc_count}}\n{{/payload.aggregations.topn.buckets}}"
+    }
+    }
+  }
+}'
+我们可以看到，跟原版的相比，只改动了很小的一些地方：
+为了简便，interval 固定写数值，没带 s/m/d/H 之类的单位；
+condition 里直接使用了 JavaScript，这点也是 ES 2.x 的 mapping 要求跟 watcher 本身有冲突的一个地方：watcher的 "ctx.payload.hits.total" : { "gt" : 0 } 这种写法，如果是普通索引，会因为字段名里带 . 直接写入失败的；
+因为是在 Kibana 里面运行，所以从 ES 拿到的只有 payload(也就是查询响应)，所以把里面的 ctx. 都删掉了。
+好，然后创建插件：
+cd kibana-4.3.0-darwin-x64/src/plugins
+mkdir alert
+在自定义插件目录底下创建 package.json 描述：
+{
+  "name": "alert",
+  "version": "0.0.1"
+}
+以及最终的 index.js 代码：
+'use strict';
+module.exports = function (kibana) {
+  var later = require('later');
+  var _ = require('lodash');
+  var mustache = require('mustache');
+
+  return new kibana.Plugin({
+    init: function init(server) {
+      var client = server.plugins.elasticsearch.client;
+      var sched = later.parse.text('every 10 minute');
+      later.setInterval(doalert, sched);
+      function doalert() {
+        getCount().then(function(resp){
+          getWatcher(resp.count).then(function(resp){
+            _.each(resp.hits.hits, function(hit){
+              var watch = hit._source;
+              var every = watch.trigger.schedule.interval;
+              var watchSched = later.parse.recur().every(every).second();
+              var wt = later.setInterval(watching, watchSched);
+              function watching() {
+                var request = watch.input.search.request;
+                var condition = watch.condition.script.script;
+                var transform = watch.transform.search.request;
+                var actions = watch.actions;
+                client.search(request).then(function(payload){
+                  var ret = eval(condition);
+                  if (ret) {
+                    client.search(transform).then(function(payload) {
+                      _.each(_.values(actions), function(action){
+                        if(_.has(action, 'email')) {
+                          var subject = mustache.render(action.email.subject, {"payload":payload});
+                          var body = mustache.render(action.email.body, {"payload":payload});
+                          console.log(subject, body);
+                        }
+                      });
+                    });
+                  }
+                });
+              }
+            });
+          });
+        });
+      }
+      function getCount() {
+        return client.count({
+          index:'watcher',
+          type:"watch"
+        });
+      }
+      function getWatcher(count) {
+        return client.search({
+          index:'watcher',
+          type:"watch",
+          size:count
+        });
+      }
+    }
+  });
+};
+其中用到了两个 npm 模块，later 模块用来实现定时器和 crontab 文本解析，mustache 模块用来渲染邮件内容模板，这也是 watcher 本身采用的渲染模块。
+需要安装一下：
+npm install later
+npm install mustache
+然后运行 ./bin/kibana，就可以看到终端上除了原有的内容以外，还会定期输出 alert 的 email 内容了。
+要点解释
+
+这个极简示例中，主要有两段：
+注册为插件
+module.exports = function (kibana) {
+  return new kibana.Plugin({
+    init: function init(server) {
+注意上一节的可视化插件，这块是：
+module.exports = function (kibana) {
+  return new kibana.Plugin({
+    uiExports: {
+      visTypes: [
+引用 ES client
+    init: function init(server) {
+      var client = server.plugins.elasticsearch.client;
+这里通过调用 server.plugins 来直接引用 Kibana 里其他插件里的对象。这样，alert 插件就可以跟其他功能共用同一个 ES client，免去单独配置自己的 ES 设置项和新开网络连接的资源消耗。
+
+
+
+Kibana 截图报表
+
+ELK Stack 本身作为一个实时数据检索聚合的系统，在定期报表方面，是有一定劣势的。因为基本上不可能把源数据长期保存在 Elasticsearch 集群中。即便保存了，为了一些已经成形的数据，再全面查询一次过久的冷数据，也是有额外消耗的。那么，对这种报表数据的需求，如何处理？其实很简单，把整个 Kibana 页面截图下来即可。
+FireFox 有插件用来截全网页图。不过如果作为定期的工作，这么搞还是比较麻烦的，需要脚本化下来。这时候就可以用上 phantomjs 软件了。phantomjs 是一个基于 webkit 引擎做的 js 脚本库。可以通过 js 程序操作 webkit 浏览器引擎，实现各种浏览器功能。
+phantomjs 在 Linux 平台上没有二进制分发包，所以必须源代码编译：
+# yum -y install gcc gcc-c++ make flex bison gperf ruby \
+  openssl-devel freetype-devel fontconfig-devel libicu-devel sqlite-devel \
+  libpng-devel libjpeg-devel
+# git clone git://github.com/ariya/phantomjs.git
+# cd phantomjs
+# git checkout 2.0
+# ./build.sh
+想要给 kibana 页面截图，几行代码就够了。
+Kibana3 截屏代码
+
+下面是一个 Kibana3 的截屏示例。 capture-kibana.js 如下：
+var page = require('webpage').create();
+var address = 'http://kibana.example.com/#/dashboard/elasticsearch/h5_view';
+var output = 'kibana.png';
+page.viewportSize = { width: 1366, height: 600 };
+page.open(address, function (status) {
+    if (status !== 'success') {
+        console.log('Unable to load the address!');
+        phantom.exit();
+    } else {
+        window.setTimeout(function () {
+            page.render(output);
+            phantom.exit();
+        }, 30000);
+    }
+});
+然后运行 phantomjs capture-kibana.js 命令，就能得到截图生成的 kibana.png 图片了。
+这里两个要点：
+要设置 viewportSize 里的宽度，否则效果会变成单个 panel 依次往下排列。
+要设置 setTimeout，否则在获取完 index.html 后就直接返回了，只能看到一个大白板。用 phantomjs 截取 angularjs 这类单页 MVC 框架应用时一定要设置这个。
+Kibana4 的截屏开源项目
+
+Kibana4 的 dashboard 同样可以采取上面 Kibana3 的方式自己实现。不过社区最近有人完成了一个辅助项目，把截屏配置、历史记录展示等功能都界面化了。项目地址见
+
+
+
+
+
+
+ELK Stack 与 Hadoop 体系的区别
+
+Kibana 因其丰富的图表类型和漂亮的前端界面，被很多人理解成一个统计工具。而我个人认为，ELK 这一套体系，不应该和 Hadoop 体系同质化。定期的离线报表，不是 Elasticsearch 专长所在(多花费分词、打分这些步骤在高负载压力环境上太奢侈了)，也不应该由 Kibana 来完成(每次刷新都是重新计算)。Kibana 的使用场景，应该集中在两方面：
+实时监控
+
+通过 histogram 面板，配合不同条件的多个 queries 可以对一个事件走很多个维度组合出不同的时间序列走势。时间序列数据是最常见的监控报警了。
+问题分析
+
+通过 Kibana 的交互式界面可以很快的将异常时间或者事件范围缩小到秒级别或者个位数。期望一个完美的系统可以给你自动找到问题原因并且解决是不现实的，能够让你三两下就从 TB 级的数据里看到关键数据以便做出判断就很棒了。这时候，一些非 histogram 的其他面板还可能会体现出你意想不到的价值。全局状态下看似很普通的结果，可能在你锁定某个范围的时候发生剧烈的反方向的变化，这时候你就能从这个维度去重点排查。而表格面板则最直观的显示出你最关心的字段，加上排序等功能。入库前字段切分好，对于排错分析真的至关重要。
+Splunk 场景参考
+
+关于 elk 的用途，我想还可以参照其对应的商业产品 splunk 的场景：
+使用 Splunk 的意义在于使信息收集和处理智能化。而其操作智能化表现在：
+搜索，通过下钻数据排查问题，通过分析根本原因来解决问题；
+实时可见性，可以将对系统的检测和警报结合在一起，便> 于跟踪 SLA 和性能问题；
+历史分析，可以从中找出趋势和历史模式，行为基线和阈值，生成一致性报告。
+-- Peter Zadrozny, Raghu Kodali 著/唐宏，陈健译《Splunk大数据分析》
+

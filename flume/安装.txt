@@ -1,0 +1,16 @@
+#set flume enviroment
+export FLUME_HOME=/Users/lyt1987/Desktop/macDevelopEnviroment/apache-flume-1.5.2-bin
+export PATH=$PATH:$FLUME_HOME/bin
+
+cd apache-flume-1.5.2-bin
+#./bin/flume-ng agent --conf conf --conf-file example.conf --name a1 -Dflume.root.logger=INFO,console
+#Flume分发包中的一个Avro客户端可以通过Avro RPC机制将一个给定的文件发送给Flume Avro Source。
+
+#$ bin/flume-ng avro-client -H localhost -p 41414 -F /usr/logs/log.10
+./bin/flume-ng agent -n $agent_name -c conf -f conf/flume-conf.properties.template
+
+
+
+
+
+

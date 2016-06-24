@@ -1,0 +1,899 @@
+// 基本格式：
+统计信息监控jstat -<option> <vmid> [<interval> [<count>]]
+监控vm的option信息，间隔时间为interval毫秒, 查询次数为count, 
+
+//option则 有以下几种：
+-class // 类装载，卸载数量，总空间及类装载所耗时间
+jstat -class 312 2000 10
+Loaded  Bytes  Unloaded  Bytes     Time
+ 13490 29414.4       36    56.7      36.80
+ 13490 29414.4       36    56.7      36.80
+ 13490 29414.4       36    56.7      36.80
+ 13499 29430.2       36    56.7      36.82
+ 13499 29430.2       36    56.7      36.82
+ 13499 29430.2       36    56.7      36.82
+ 13499 29430.2       36    56.7      36.82
+ 13499 29430.2       36    56.7      36.82
+ 13499 29430.2       36    56.7      36.82
+ 13499 29430.2       36    56.7      36.82
+-compiler // JIT编译过的方法及耗时时间
+jstat -compiler 312
+Compiled Failed Invalid   Time   FailedType FailedMethod
+    1785      0       0    20.50          0
+-gc //监控java堆状况, 年轻代(Eden + S0 + S1) + 老年代 + 永久代 ＋ 已用空间 + GC时间等
+jstat -gc 312 // C: 容量； U:使用的；E:Eden；O:老年代；P:永久代；YGC:年轻代GC次数；YGCT:年轻代GC时间；FGC:FullGC次数；FGCT:FullGC时间；GCT: GC总时间
+S0C    S1C    S0U    S1U      EC       EU        OC         OU       PC     PU    YGC     YGCT    FGC    FGCT     GCT
+1024.0 1024.0  0.0    0.0   75776.0   1883.2   66048.0    50115.7   82944.0 82835.4    137    0.866  111    20.107   20.973
+-gcutil // 同-gc，但显示已使用的空间百分比
+jstat -gcutil 312
+  S0     S1     E      O      P     YGC     YGCT    FGC    FGCT     GCT
+  0.00   0.00   2.49  75.88  99.87    137    0.866   111   20.107   20.973
+-gccapacity //与-gc相同，但显示各个堆区使用的最大和最小空间
+-gccause //与-gcutil相同，但会输出上一次GC产生的原因
+-gcnew //监控年轻代GC状况
+-gcnewcapacity //与-gcnew相同, 但会输出使用到的最大和最小空间
+-gcold //监控老年代GC状况
+-gcoldcapacity //与-gcold, 但会输出使用到的最大和最小空间
+-gcpermcapacity //输出永久代使用到的最大和最小空间
+-printcompilation //输出已经被JIT编译的方法
+
+
+
+
+
+
+
+
+
+
+
+jmap是比较地道本土的堆分析工具，应该掌握，下面讲讲如何运用。
+
+// 打印jvm的堆状况，主要是年轻代和老年代信息
+jmap -heap <pid>
+如：
+Heap Configuration:
+   MinHeapFreeRatio = 40
+   MaxHeapFreeRatio = 70
+   MaxHeapSize      = 536870912 (512.0MB)
+   NewSize          = 1310720 (1.25MB)
+   MaxNewSize       = 17592186044415 MB
+   OldSize          = 5439488 (5.1875MB)
+   NewRatio         = 2
+   SurvivorRatio    = 8
+   PermSize         = 21757952 (20.75MB)
+   MaxPermSize      = 268435456 (256.0MB)
+   G1HeapRegionSize = 0 (0.0MB)
+
+Heap Usage:
+PS Young Generation
+Eden Space:
+   capacity = 46661632 (44.5MB)
+   used     = 1139464 (1.0866775512695312MB)
+   free     = 45522168 (43.41332244873047MB)
+   2.441972025324789% used
+From Space:
+   capacity = 524288 (0.5MB)
+   used     = 0 (0.0MB)
+   free     = 524288 (0.5MB)
+   0.0% used
+To Space:
+   capacity = 1048576 (1.0MB)
+   used     = 0 (0.0MB)
+   free     = 1048576 (1.0MB)
+   0.0% used
+PS Old Generation
+   capacity = 112721920 (107.5MB)
+   used     = 54152304 (51.64366149902344MB)
+   free     = 58569616 (55.85633850097656MB)
+   48.04061534792878% used
+PS Perm Generation
+   capacity = 94371840 (90.0MB)
+   used     = 94050296 (89.69335174560547MB)
+   free     = 321544 (0.30664825439453125MB)
+   99.65927971733942% used
+
+37542 interned Strings occupying 3976528 bytes.
+// 上面的信息比较笼统，我们还可以打印出具体类及实例信息, 将有助于帮助我们分析堆里面到底有哪些类的实例等
+jmap -histo[:live只处理存活对象] <pid>
+如，
+
+ num     #instances         #bytes  class name
+----------------------------------------------
+   1:        152516       24683264  <constMethodKlass>
+   2:        152516       19540560  <methodKlass>
+   3:         15131       18875008  <constantPoolKlass>
+   4:        201534       18312296  [C
+   5:         15131       11855656  <instanceKlassKlass>
+   6:         12595       10850176  <constantPoolCacheKlass>
+   7:         94350        5198896  [B
+   8:        182201        4372824  java.lang.String
+   9:        109840        3514880  java.util.HashMap$Entry
+  10:         18069        2334792  [Ljava.util.HashMap$Entry;
+  11:          3889        2233712  <methodDataKlass>
+  12:         46910        2159984  [Ljava.lang.Object;
+  13:         16277        2034144  java.lang.Class
+  14:         17040        2024080  [I
+  15:         22528        1588768  [S
+  16:         24126        1174880  [[I
+  17:         23542         941680  java.util.LinkedHashMap$Entry
+// 除此之外，我们可以将堆信息dump成文件，通过其他工具如jhat, mat做进一步分析
+jmap -dump:live,format=b,file=heap.bin <pid>
+
+
+
+
+
+
+
+
+
+
+jstack
+
+
+
+
+
+
+
+
+
+// 查询jvm实例的系统属性，jvm信息查询工具
+jinfo -sysprops <pid>：
+// 查询jvm实例的启动标志
+jinfo -flags <pid>
+详细用法:
+    -flag <name>         打印flags[name]的值
+    -flag [+|-]<name>    [+]启用[-]停用某vm标志
+    -flag <name>=<value> 设置某vm标志的值
+
+
+
+
+
+
+
+
+
+jconsole
+
+
+
+
+
+
+
+
+
+
+
+
+Linux之监控CPU
+
+发表于2年前(2014-01-22 16:21)   阅读（2025） | 评论（4） 0人收藏此文章, 我要收藏
+赞7
+
+摘要 Linux下监控CPU
+linux cpu top pidstat
+性能调优得先从系统开始侦查，先看看怎么查询CPU相关信息吧:
+
+关于top
+
+//执行top命令:
+top
+top - 11:39:32 up 68 days, 23:29,  2 users,  load average: 0.00, 0.01, 0.05
+Tasks(): 121 total,   1 running, 120 sleeping,   0 stopped,   0 zombie(僵尸进程数)
+Cpu(s):  0.2%us,  0.2%sy,  0.0%ni, 99.7%id,  0.0%wa,  0.0%hi,  0.0%si,  0.0%st
+Mem:   4044428k total,  3764292k used,   280136k free,   174952k buffers
+Swap:  4190204k total,      412k used,  4189792k free,  3114472k cached
+
+  PID USER      PR  NI  VIRT  RES  SHR S %CPU %MEM    TIME+  COMMAND                               
+    1 root      20   0 24460 2260 1344 S    0  0.1   0:01.97 init                                   
+    2 root      20   0     0    0    0 S    0  0.0   0:00.10 kthreadd                               
+    3 root      20   0     0    0    0 S    0  0.0   2:08.17 ksoftirqd/0                            
+    6 root      RT   0     0    0    0 S    0  0.0   0:00.41 migration/0                            
+    ...
+//Cpu参数：
+%us(没有经过优先级调整的用户进程所占cpu时间百分比)
+%sy(内核进程所占cpu时间百分比)
+%ni(经过优先级调整的用户进程所占cpu时间百分比)
+%id(cpu空闲时间所占百分比)
+wa(cpu等待IO完成所占时间百分比)
+%hi(硬件中断所占cpu时间百分比)
+%si(软件中断所占cpu时间百分比)
+%st(虚拟CPU等待真实CPU处理的时间百分比)
+
+//进程参数：
+PID: 进程id
+USER：进程用户
+PR:　优先级
+NI: nice值，负数表示优先级更高，正数表示优先级更低，0表示进程调度后，优先级不会被调整
+VIRT(kb):进程只用的虚拟内存，包括代码，数据，共享库，交换的页数及映射的页数
+RES(kb)：进程使用的内存
+SHR(kb)：进程占用的共享内存kb
+S：进程状态，主要包括：
+   'D'：不可中断的睡眠
+   'R'：运行中
+   'S': 睡眠中
+   'T': 停止了
+   'Z': 僵尸状态
+%CPU: 所占cpu
+%MEM：所占内存
+TIME+：CPU时间(百分率)
+COMMAND：命令行名称或程序名称
+
+// 查看某进程状况
+top -p <pid>
+在top中，按1可以查看多个cpu(核)状态，按shift+h可以按线程查看cpu状况
+关于pidstat
+
+// 先安装sysstat
+yum install sysstat
+// 每隔2秒打印信息，共打印3次：
+pidstat 2 3
+02:44:27 PM       PID    %usr %system  %guest    %CPU   CPU  Command
+02:44:29 PM      6625    0.50    0.00    0.00    0.50     0  java
+02:44:29 PM     20919    0.00    0.50    0.00    0.50     1  pidstat
+
+02:44:29 PM       PID    %usr %system  %guest    %CPU   CPU  Command
+02:44:31 PM       308    0.00    0.50    0.00    0.50     0  usb-storage
+02:44:31 PM     20919    0.00    0.50    0.00    0.50     1  pidstat
+
+02:44:31 PM       PID    %usr %system  %guest    %CPU   CPU  Command
+
+Average:          PID    %usr %system  %guest    %CPU   CPU  Command
+Average:          308    0.00    0.17    0.00    0.17     -  usb-storage
+Average:         6625    0.17    0.00    0.00    0.17     -  java
+Average:        20919    0.00    0.33    0.00    0.33     -  pidstat
+// 打印某进程的线程的cpu消耗状况，比top更好的一个功能
+pidstat -p 6625 -t 1 1
+02:48:43 PM      TGID       TID    %usr %system  %guest    %CPU   CPU  Command
+02:48:44 PM      6625         -    0.00    0.00    0.00    0.00     0  java
+02:48:44 PM         -      6625    0.00    0.00    0.00    0.00     0  |__java
+02:48:44 PM         -      6626    0.00    0.00    0.00    0.00     0  |__java
+02:48:44 PM         -      6627    0.00    0.00    0.00    0.00     1  |__java
+02:48:44 PM         -      6628    0.00    0.00    0.00    0.00     0  |__java
+02:48:44 PM         -      6629    0.00    0.00    0.00    0.00     1  |__java
+02:48:44 PM         -      6630    0.00    0.00    0.00    0.00     0  |__java
+02:48:44 PM         -      6631    0.00    0.00    0.00    0.00     0  |__java
+02:48:44 PM         -      6632    0.00    0.00    0.00    0.00     1  |__java
+// 信息说明
+%usr 任务在用户态执行所占cpu(不包括在虚拟cpu中)
+%system 任务在内核态执行所占cpu
+%guest  任务在虚拟cpu中执行所占cpu
+除top和pidstat外，vmstat也可以查询一些基本信息：
+vmstat
+procs -----------memory---------- ---swap-- -----io---- -system-- ----cpu----
+ r  b   swpd   free   buff  cache   si   so    bi    bo   in   cs us sy id wa
+ 5  0    796 1271444 165744 2141660    0    0     0     2    2    3  0  0 100  0
+对于java应用，CPU消耗主要体现在us, sy值上：
+
+对于us过高时，可以粗略通过几步定位到哪个java线程，再定位到代码中：
+
+    1. top (shift+h)查看cpu使用较高的线程tid(需转换成16进制)
+
+    2. 通过jstack <pid> 将栈打印出，查找tid对应的信息即可
+
+对于sy过高，主要是线程切换比较频繁，在java中可能由于线程比较多，且频繁因为IO,锁等不断处于阻塞或执行状态导致，也可通过上述方法来定位。(jstack -l可以打印额外的锁信息)。
+
+
+
+
+
+
+
+
+Linux之监控磁盘IO
+
+发表于2年前(2014-01-22 17:50)   阅读（864） | 评论（0） 0人收藏此文章, 我要收藏
+赞0
+
+摘要 Linux下监控磁盘IO
+Linux 磁盘IO 监控
+//安装sysstat
+yum install sysstat
+// 查看某进程pid的线程io信息
+pidstat -d -t -p 6625
+
+05:01:15 PM      TGID       TID   kB_rd/s   kB_wr/s kB_ccwr/s  Command
+05:01:15 PM      6625         -      0.01      0.24      0.00  java
+05:01:15 PM         -      6625      0.00      0.00      0.00  |__java
+05:01:15 PM         -      6626      0.00      0.00      0.00  |__java
+05:01:15 PM         -      6627      0.00      0.00      0.00  |__java
+05:01:15 PM         -      6628      0.00      0.00      0.00  |__java
+05:01:15 PM         -      6629      0.00      0.00      0.00  |__java
+05:01:15 PM         -      6630      0.00      0.00      0.00  |__java
+05:01:15 PM         -      6631      0.00      0.00      0.00  |__java
+05:01:15 PM         -      6632      0.00      0.00      0.00  |__java
+05:01:15 PM         -      6633      0.00      0.00      0.00  |__java
+05:01:15 PM         -      6634      0.00      0.00      0.00  |__java
+// 输出信息
+TGID: 线程组id
+TID: 线程id
+kB_rd/s: 磁盘读取速率
+kB_wr/s: 磁盘写入速率
+kB_cowr/s: 取消磁盘写入速率，主要是为了减少脏页面缓存时会发生
+Command: 命令或应用名称
+除此外，通过iostat可以查看linux总的io信息：
+iostat 
+avg-cpu:  %user   %nice %system %iowait  %steal   %idle
+           0.09    0.01    0.07    0.12    0.00   99.72
+
+Device:            tps    kB_read/s    kB_wrtn/s    kB_read    kB_wrtn
+sda               0.49         0.22         4.66    1317196   27881143
+dm-0              0.66         0.22         4.65    1308401   27832024
+dm-1              0.00         0.00         0.00       1220        908
+同样对于java应用，我们可以通过pidstat先查看io异常的线程tid，再通过jstack分析栈，定位代码即可。
+
+
+
+
+
+
+
+
+Linux下对内存进行监控：
+
+关于vmstat
+vmstat
+procs -----------memory---------- ---swap-- -----io---- --system-- -----cpu-----
+ r  b   swpd   free   buff  cache   si   so    bi    bo   in   cs us sy id wa st
+ 0  0 102144  10832  33988  57240    0    5    22     9   24   40  0  0 99  0  0
+//数据说明
+//内存信息：
+swpd //使用了的虚拟内存kb
+free //空闲的物理内存kb
+buff //用于缓冲的物理内存kb
+cache //用于缓存的物理内存kb
+//虚拟内存信息：
+si //每秒从磁盘读入内存的数据量
+so //每秒从内存往磁盘写入的数据量
+关于sar
+sar -r -S
+//物理内存信息
+06:20:01 AM kbmemfree kbmemused  %memused kbbuffers  kbcached  kbcommit   %commit
+06:30:01 AM     12396    498652     97.57     31548     57124    877864     56.29
+06:40:01 AM     12032    499016     97.65     31884     57140    877864     56.29
+06:50:01 AM     12436    498612     97.57     32376     57140    876488     56.20
+07:00:01 AM     12056    498992     97.64     32704     57144    876488     56.20
+07:10:01 AM     11552    499496     97.74     33092     57148    876996     56.23
+07:20:01 AM     11312    499736     97.79     33428     57144    876996     56.23
+07:30:01 AM     10816    500232     97.88     33796     57148    876996     56.23
+07:40:01 AM      7884    503164     98.46     34184     57248    880320     56.44
+07:50:01 AM      8436    502612     98.35     34548     57252    877864     56.29
+Average:        10991    500057     97.85     33062     57165    877542     56.27
+//虚拟内存信息
+06:20:01 AM kbswpfree kbswpused  %swpused  kbswpcad   %swpcad
+06:30:01 AM    946424    102144      9.74      3796      3.72
+06:40:01 AM    946424    102144      9.74      3796      3.72
+06:50:01 AM    946424    102144      9.74      3796      3.72
+07:00:01 AM    946424    102144      9.74      3796      3.72
+07:10:01 AM    946424    102144      9.74      3796      3.72
+07:20:01 AM    946424    102144      9.74      3796      3.72
+07:30:01 AM    946424    102144      9.74      3796      3.72
+07:40:01 AM    946424    102144      9.74      3796      3.72
+07:50:01 AM    946424    102144      9.74      3796      3.72
+Average:       946424    102144      9.74      3796      3.72
+关于pidstat
+pidstat -r -p 3063
+08:03:46 AM       PID  minflt/s  majflt/s     VSZ    RSS   %MEM  Command
+08:03:46 AM      3063      1.79      0.00 1554996 114788  23.23  java
+VSZ: 占有的虚拟内存大小kb
+RSS: 占有的非虚拟内存大小kb
+%MEM: 占有的物理内存百分比
+
+
+
+
+
+Linux下对网络监控：
+
+关于sar
+// 安装sysstat
+yum install sysstat
+
+// ubuntu可能还要配置sysstat
+1. vim /etc/default/sysstat:
+   ENABLED="true"
+2. dpkg-reconfigure sysstat
+sar -n ALL
+//网卡数据信息：网卡名,收到包数/s,传输包数/s,收到数据量kb/s,传输数据量kb/s,收到压缩包数/s,传输压缩包数/s,收到广播包数/s
+10:15:01 AM     IFACE   rxpck/s   txpck/s    rxkB/s    txkB/s   rxcmp/s   txcmp/s  rxmcst/s
+10:15:24 AM        lo      0.17      0.17      0.01      0.01      0.00      0.00      0.00
+10:15:24 AM      eth0      5.48      1.75      0.46      0.49      0.00      0.00      0.00
+10:25:01 AM        lo      0.02      0.02      0.00      0.00      0.00      0.00      0.00
+10:25:01 AM      eth0      4.57      1.05      0.38      0.21      0.00      0.00      0.00
+10:35:01 AM        lo      0.03      0.03      0.00      0.00      0.00      0.00      0.00
+10:35:01 AM      eth0      5.34      1.81      0.45      0.34      0.00      0.00      0.00
+Average:           lo      0.03      0.03      0.00      0.00      0.00      0.00      0.00
+Average:         eth0      4.97      1.44      0.41      0.28      0.00      0.00      0.00
+//网卡错误数据信息: 网卡名,收到错误包数/s,传输错误包数/s,碰撞包数/s,接收丢弃包数/s,传输丢弃包数/s,错误包数/s,帧对齐错误包数/s,收到溢出错误包数/s, 传输溢出错误包数/s
+10:15:01 AM     IFACE   rxerr/s   txerr/s    coll/s  rxdrop/s  txdrop/s  txcarr/s  rxfram/s  rxfifo/s  txfifo/s
+10:15:24 AM        lo      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+10:15:24 AM      eth0      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+10:25:01 AM        lo      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+10:25:01 AM      eth0      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+10:35:01 AM        lo      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+10:35:01 AM      eth0      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+Average:           lo      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+Average:         eth0      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+//网络文件系统客户端数据信息：rpc请求数/s,重新传输rpc请求数/s,读rpc请求数/s,写rpc请求数/s,访问rpc请求数，获取属性rpc请求数/s
+10:15:01 AM    call/s retrans/s    read/s   write/s  access/s  getatt/s
+10:15:24 AM      0.00      0.00      0.00      0.00      0.00      0.00
+10:25:01 AM      0.00      0.00      0.00      0.00      0.00      0.00
+10:35:01 AM      0.00      0.00      0.00      0.00      0.00      0.00
+Average:         0.00      0.00      0.00      0.00      0.00      0.00
+//网络文件系统服务端数据信息：收到rpc请求数/s,收到错误rpc请求数/s,收到网络包数/s,收到udp包数/s,收到tcp包数/s,回复时缓存命中包数/s,回复时缓存未命中包数/s,读请求数/s,写请求数/s,访问请求数/s,获取属性请求数/s
+10:15:01 AM   scall/s badcall/s  packet/s     udp/s     tcp/s     hit/s    miss/s   sread/s  swrite/s saccess/s sgetatt/s
+10:15:24 AM      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+10:25:01 AM      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+10:35:01 AM      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+Average:         0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+//Socket数据信息：系统中总socket数,使用中的tcp socket数,使用中的udp socket数,使用中的raw socket数,队列中的ip碎片数,处于TIME_WAIT状态的tcp socket数
+10:15:01 AM    totsck    tcpsck    udpsck    rawsck   ip-frag    tcp-tw
+10:15:24 AM       348        29         7         0         0         0
+10:25:01 AM       349        29         7         0         0         0
+10:35:01 AM       349        29         7         0         0         0
+Average:          349        29         7         0         0         0
+通过关键字，你也可以查询某一部分的信息：
+// 关键字：
+DEV,  EDEV,  NFS, NFSD, SOCK, IP, EIP, ICMP, EICMP, TCP, ETCP, UDP, SOCK6, IP6, EIP6, ICMP6, EICMP6 and UDP6.
+//如，查看socket信息:
+sar -n SOCK
+10:15:01 AM    totsck    tcpsck    udpsck    rawsck   ip-frag    tcp-tw
+10:15:24 AM       348        29         7         0         0         0
+10:25:01 AM       349        29         7         0         0         0
+10:35:01 AM       349        29         7         0         0         0
+10:45:01 AM       349        29         7         0         0         0
+10:55:01 AM       349        29         7         0         0         0
+11:05:01 AM       349        29         7         0         0         0
+11:15:01 AM       349        29         7         0         0         0
+11:25:01 AM       349        29         7         0         0         0
+11:35:01 AM       349        29         7         0         0         0
+11:45:01 AM       349        29         7         0         0         0
+11:55:02 AM       349        29         7         0         0         0
+12:05:01 PM       349        29         7         0         0         0
+Average:          349        29         7         0         0         0
+
+
+
+
+
+
+
+
+
+
+
+使用Monit监控进程与系统状态
+
+时间 2014-04-12 02:18:39 Hey! Linux.
+原文  http://heylinux.com/archives/3063.html
+主题 进程 Nginx 数据库
+背景介绍： 
+随着线上服务器数量的增加，各种开源软件和工具的广泛使用，一些服务自动停止或无响应的情况时有发生。 
+而其中有很大一部分都是由于软件自身的稳定性或者机器硬件资源的限制而造成的，按道理来讲，这些情况都应该设法找到本质原因，然后避免再次出现。
+
+但现实是残酷的，不少软件本身的稳定性有待提升，机器的硬件资源提升会触及成本，因此在集群的环境中，具备冗余，使得执行简单的服务重启成为了最现实的选择。
+
+这本身不是什么困难的事情，实现的方法有很多，比如在Zabbix或Nagios的报警中增加Action或Commands，或自己写脚本放到计划任务中执行都可以。
+
+但本文要介绍的，是专门来做这种事情的一个工具：Monit。 
+它最大的特点是配置文件简单易读，同时支持进程和系统状态的监控，并灵活的提供了各种检测的方式，周期，并进行报警和响应（重启服务，执行命令等）
+
+系统环境： 
+OS: CentOS 6.4 x86_64 Minimal
+
+具体配置： 
+1. 安装EPEL仓库 
+# yum install http://dl.fedoraproject.org/pub/epel/6/x86_64/epel-release-6-8.noarch.rpm
+
+2. 安装Monit软件包 
+# yum install monit
+
+3. 配置Monit通用参数，包括开启HTTP统计界面，邮件报警等 
+# vim /etc/monit.conf
+
+###############################################################################
+## Monit control file
+###############################################################################
+##
+## Comments begin with a '#' and extend through the end of the line. Keywords
+## are case insensitive. All path's MUST BE FULLY QUALIFIED, starting with '/'.
+##
+## Below you will find examples of some frequently used statements. For 
+## information about the control file and a complete list of statements and 
+## options, please have a look in the Monit manual.
+##
+##
+###############################################################################
+## Global section
+###############################################################################
+##
+## Start Monit in the background (run as a daemon):
+#
+set daemon 120			# check services at 2-minute intervals
+	with start delay 60   # optional: delay the first check by 4-minutes (by 
+#						 # default Monit check immediately after Monit start)
+#
+#
+## Set syslog logging with the 'daemon' facility. If the FACILITY option is
+## omitted, Monit will use 'user' facility by default. If you want to log to 
+## a standalone log file instead, specify the full path to the log file
+#
+# set logfile syslog facility log_daemon					   
+#
+#
+### Set the location of the Monit id file which stores the unique id for the
+### Monit instance. The id is generated and stored on first Monit start. By 
+### default the file is placed in $HOME/.monit.id.
+#
+set idfile /var/run/monit/.monit.id
+#
+### Set the location of the Monit state file which saves monitoring states
+### on each cycle. By default the file is placed in $HOME/.monit.state. If
+### the state file is stored on a persistent filesystem, Monit will recover
+### the monitoring state across reboots. If it is on temporary filesystem, the
+### state will be lost on reboot which may be convenient in some situations.
+#
+set statefile /var/run/monit/.monit.state
+#
+## Set the list of mail servers for alert delivery. Multiple servers may be 
+## specified using a comma separator. By default Monit uses port 25 - it is
+## possible to override this with the PORT option.
+#
+set mailserver localhost
+# set mailserver mail.bar.baz,			   # primary mailserver
+#				backup.bar.baz port 10025,  # backup mailserver on port 10025
+#				localhost				   # fallback relay
+#
+#
+## By default Monit will drop alert events if no mail servers are available. 
+## If you want to keep the alerts for later delivery retry, you can use the 
+## EVENTQUEUE statement. The base directory where undelivered alerts will be 
+## stored is specified by the BASEDIR option. You can limit the maximal queue
+## size using the SLOTS option (if omitted, the queue is limited by space 
+## available in the back end filesystem).
+#
+set eventqueue
+	basedir /var/run/monit  # set the base directory where events will be stored
+#   slots 100			   # optionally limit the queue size
+#
+#
+## Send status and events to M/Monit (for more informations about M/Monit 
+## see http://mmonit.com/).
+#
+# set mmonit http://monit:monit@192.168.1.10:8080/collector
+#
+#
+## Monit by default uses the following alert mail format:
+##
+## --8<--
+## From: monit@$HOST									 # sender
+## Subject: Monit Alert - Event:$EVENT Service:$SERVICE  # subject
+## 
+## Event:$EVENT Service:$SERVICE			 #
+##										   #
+## 	Date:		$DATE				   #
+## 	Action:	  $ACTION				 #
+## 	Host:		$HOST				   # body
+## 	Description: $DESCRIPTION			#
+##										   #
+## Your faithful employee,				   #
+## Monit									 #
+## --8<--
+##
+## You can override this message format or parts of it, such as subject
+## or sender using the MAIL-FORMAT statement. Macros such as $DATE, etc.
+## are expanded at runtime. For example, to override the sender, use:
+#
+set mail-format { 
+  from: monit@heylinux.com
+  subject: [$SERVICE] $EVENT
+  message:
+[$SERVICE] $EVENT
+
+  Date:		$DATE
+  Action:	  $ACTION
+  Host:		heylinux.com
+  Description: $DESCRIPTION
+
+Your faithful employee,				   
+Monit }
+#
+#
+## You can set alert recipients whom will receive alerts if/when a 
+## service defined in this file has errors. Alerts may be restricted on 
+## events by using a filter as in the second example below. 
+#
+set alert guosuiyu@foxmail.com
+# set alert sysadm@foo.bar					   # receive all alerts
+# set alert manager@foo.bar only on { timeout }  # receive just service-
+#												# timeout alert
+#
+#
+## Monit has an embedded web server which can be used to view status of 
+## services monitored and manage services from a web interface. See the
+## Monit Wiki if you want to enable SSL for the web server. 
+#
+set httpd port 2812 and
+	use address localhost  # only accept connection from localhost
+	allow localhost		# allow localhost to connect to the server and
+#	 allow admin:monit	  # require user 'admin' with password 'monit'
+#	 allow @monit		   # allow users of group 'monit' to connect (rw)
+#	 allow @users readonly  # allow users of group 'users' to connect readonly
+#
+#
+###############################################################################
+## Services
+###############################################################################
+##
+## Check general system resources such as load average, cpu and memory
+## usage. Each test specifies a resource, conditions and the action to be
+## performed should a test fail.
+#
+#  check system myhost.mydomain.tld
+#	if loadavg (1min) > 4 then alert
+#	if loadavg (5min) > 2 then alert
+#	if memory usage > 75% then alert
+#	if cpu usage (user) > 70% then alert
+#	if cpu usage (system) > 30% then alert
+#	if cpu usage (wait) > 20% then alert
+#
+#	
+## Check a file for existence, checksum, permissions, uid and gid. In addition
+## to alert recipients in the global section, customized alert can be sent to 
+## additional recipients by specifying a local alert handler. The service may 
+## be grouped using the GROUP option. More than one group can be specified by
+## repeating the 'group name' statement.
+#	
+#  check file apache_bin with path /usr/local/apache/bin/httpd
+#	if failed checksum and 
+#	   expect the sum 8f7f419955cefa0b33a2ba316cba3659 then unmonitor
+#	if failed permission 755 then unmonitor
+#	if failed uid root then unmonitor
+#	if failed gid root then unmonitor
+#	alert security@foo.bar on {
+#		   checksum, permission, uid, gid, unmonitor
+#		} with the mail-format { subject: Alarm! }
+#	group server
+#
+#	
+## Check that a process is running, in this case Apache, and that it respond
+## to HTTP and HTTPS requests. Check its resource usage such as cpu and memory,
+## and number of children. If the process is not running, Monit will restart 
+## it by default. In case the service is restarted very often and the 
+## problem remains, it is possible to disable monitoring using the TIMEOUT
+## statement. This service depends on another service (apache_bin) which
+## is defined above.
+#	
+#  check process apache with pidfile /usr/local/apache/logs/httpd.pid
+#	start program = "/etc/init.d/httpd start" with timeout 60 seconds
+#	stop program  = "/etc/init.d/httpd stop"
+#	if cpu > 60% for 2 cycles then alert
+#	if cpu > 80% for 5 cycles then restart
+#	if totalmem > 200.0 MB for 5 cycles then restart
+#	if children > 250 then restart
+#	if loadavg(5min) greater than 10 for 8 cycles then stop
+#	if failed host www.tildeslash.com port 80 protocol http
+#	   and request "/somefile.html"
+#	   then restart
+#	if failed port 443 type tcpssl protocol http
+#	   with timeout 15 seconds
+#	   then restart
+#	if 3 restarts within 5 cycles then timeout
+#	depends on apache_bin
+#	group server
+#	
+#	
+## Check filesystem permissions, uid, gid, space and inode usage. Other services,
+## such as databases, may depend on this resource and an automatically graceful
+## stop may be cascaded to them before the filesystem will become full and data
+## lost.
+#
+#  check filesystem datafs with path /dev/sdb1
+#	start program  = "/bin/mount /data"
+#	stop program  = "/bin/umount /data"
+#	if failed permission 660 then unmonitor
+#	if failed uid root then unmonitor
+#	if failed gid disk then unmonitor
+#	if space usage > 80% for 5 times within 15 cycles then alert
+#	if space usage > 99% then stop
+#	if inode usage > 30000 then alert
+#	if inode usage > 99% then stop
+#	group server
+#
+#
+## Check a file's timestamp. In this example, we test if a file is older 
+## than 15 minutes and assume something is wrong if its not updated. Also,
+## if the file size exceed a given limit, execute a script
+#
+#  check file database with path /data/mydatabase.db
+#	if failed permission 700 then alert
+#	if failed uid data then alert
+#	if failed gid data then alert
+#	if timestamp > 15 minutes then alert
+#	if size > 100 MB then exec "/my/cleanup/script" as uid dba and gid dba
+#
+#
+## Check directory permission, uid and gid.  An event is triggered if the 
+## directory does not belong to the user with uid 0 and gid 0.  In addition, 
+## the permissions have to match the octal description of 755 (see chmod(1)).
+#
+#  check directory bin with path /bin
+#	if failed permission 755 then unmonitor
+#	if failed uid 0 then unmonitor
+#	if failed gid 0 then unmonitor
+#
+#
+## Check a remote host availability by issuing a ping test and check the 
+## content of a response from a web server. Up to three pings are sent and 
+## connection to a port and an application level network check is performed.
+#
+#  check host myserver with address 192.168.1.1
+#	if failed icmp type echo count 3 with timeout 3 seconds then alert
+#	if failed port 3306 protocol mysql with timeout 15 seconds then alert
+#	if failed url http://user:password@www.foo.bar:8080/?querystring
+#	   and content == 'action="j_security_check"'
+#	   then alert
+#
+#
+###############################################################################
+## Includes
+###############################################################################
+##
+## It is possible to include additional configuration parts from other files or
+## directories.
+#
+#  include /etc/monit.d/*
+#
+#
+
+# Include all files from /etc/monit.d/
+include /etc/monit.d/*
+
+4. 举例配置针对Nginx,PHP-FPM,MySQL以及根分区用量的监控 
+在步骤3的配置文件中，可以看到在已经注释的代码中有很多的配置示例，这些足够我们用来参考了。 
+这里，给大家分享一下我在自己的VPS中所创建的相关监控项： 
+# vim /etc/monit.d/nginx
+
+check process nginx with pidfile /webserver/nginx/run/nginx.pid
+  start program = "/webserver/init.d/nginx start" with timeout 10 seconds
+  stop program  = "/webserver/init.d/nginx stop"
+  if failed host heylinux.com port 80 protocol http
+	  with timeout 10 seconds
+	  then restart
+  if 3 restarts within 5 cycles then timeout
+  group webserver
+# vim /etc/monit.d/php-fpm
+
+check process php-fpm with pidfile /webserver/php/logs/php-fpm.pid
+  start program = "/webserver/init.d/php-fpm start" with timeout 10 seconds
+  stop program  = "/webserver/init.d/php-fpm stop"
+  if cpu > 80% for 5 cycles then restart
+  if loadavg(5min) greater than 4 for 5 cycles then restart
+  if 3 restarts within 5 cycles then timeout
+  group webserver
+# vim /etc/monit.d/mysql
+
+check process mysql with pidfile /webserver/mysql/run/mysqld.pid
+  start program = "/webserver/init.d/mysqld start" with timeout 10 seconds
+  stop program  = "/webserver/init.d/mysqld stop"
+  if failed port 3306 protocol mysql
+	  with timeout 10 seconds 
+	  then restart
+  if 3 restarts within 5 cycles then timeout
+  group webserver
+# vim /etc/monit.d/rootfs
+
+check filesystem rootfs with path /dev/xvde
+  if space usage > 80% for 5 times within 15 cycles then alert
+  group os
+5. 启动Monit 
+# mkdir /var/run/monit 
+# /etc/init.d/monit start
+
+6. 模拟Nginx进程故障，测试Monit响应行为与报警 
+停止Nginx进程 
+# /webserver/init.d/nginx stop 
+# /webserver/init.d/nginx status
+
+nginx is stopped
+观察日志输出 
+# tailf /var/log/monit
+
+[CST Apr 12 01:11:55] error    : skipping /var/run/monit/.monit.id - unknown data format
+[CST Apr 12 01:11:55] error    : Aborting event /var/run/monit/.monit.state - invalid size 5
+[CST Apr 12 01:41:56] error    : 'nginx' process is not running
+[CST Apr 12 01:41:56] info     : 'nginx' trying to restart
+[CST Apr 12 01:41:56] info     : 'nginx' start: /webserver/init.d/nginx
+检查Nginx是否被Monit启动 
+# /webserver/init.d/nginx status
+
+nginx (pid 22419 22417) is running...
+查看所收到的邮件，总共有两封 
+
+
+提示服务异常的邮件 
+
+
+提示服务恢复的邮件 
+
+
+查看Monit所有监控项的状态 
+# monit status
+
+The Monit daemon 5.1.1 uptime: 1h 8m 
+
+Filesystem 'rootfs'
+  status                            accessible
+  monitoring status                 monitored
+  permission                        660
+  uid                               0
+  gid                               6
+  filesystem flags                  0x1000
+  block size                        4096 B
+  blocks total                      2580302 [10079.3 MB]
+  blocks free for non superuser     1800023 [7031.3 MB] [69.8%]
+  blocks free total                 1931088 [7543.3 MB] [74.8%]
+  inodes total                      655360
+  inodes free                       607619 [92.7%]
+  data collected                    Sat Apr 12 02:17:58 2014
+
+Process 'php-fpm'
+  status                            running
+  monitoring status                 monitored
+  pid                               13768
+  parent pid                        1
+  uptime                            6h 14m 
+  children                          5
+  memory kilobytes                  3124
+  memory kilobytes total            220032
+  memory percent                    0.5%
+  memory percent total              36.3%
+  cpu percent                       0.0%
+  cpu percent total                 5.8%
+  data collected                    Sat Apr 12 02:17:58 2014
+
+Process 'nginx'
+  status                            running
+  monitoring status                 monitored
+  pid                               22417
+  parent pid                        1
+  uptime                            36m 
+  children                          1
+  memory kilobytes                  1244
+  memory kilobytes total            29256
+  memory percent                    0.2%
+  memory percent total              4.8%
+  cpu percent                       0.0%
+  cpu percent total                 0.0%
+  port response time                0.144s to heylinux.com:80 [HTTP via TCP]
+  data collected                    Sat Apr 12 02:17:58 2014
+
+Process 'mysql'
+  status                            running
+  monitoring status                 monitored
+  pid                               21502
+  parent pid                        21026
+  uptime                            1h 13m 
+  children                          0
+  memory kilobytes                  44988
+  memory kilobytes total            44988
+  memory percent                    7.4%
+  memory percent total              7.4%
+  cpu percent                       0.2%
+  cpu percent total                 0.2%
+  port response time                0.001s to localhost:3306 [MYSQL via TCP]
+  data collected                    Sat Apr 12 02:17:58 2014
+
+System 'ec2-tokyo.localdomain'
+  status                            running
+  monitoring status                 monitored
+  load average                      [0.12] [0.08] [0.03]
+  cpu                               5.9%us 0.5%sy 0.4%wa
+  memory usage                      314260 kB [51.9%]
+  data collected                    Sat Apr 12 02:17:58 2014
+
+

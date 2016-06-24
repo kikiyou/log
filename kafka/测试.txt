@@ -1,0 +1,144 @@
+2.启动一个单节点的zookeeper
+$ nohup bin/zookeeper-server-start.sh config/zookeeper.properties &
+
+3. 准备启动一个3个broker节点的kafka集群，因此做如下配置
+$ cp config/server.properties config/server-1.properties 
+$ cp config/server.properties config/server-2.properties
+并做如下修改：
+
+config/server-1.properties:
+    broker.id=1
+    port=9093
+    log.dir=/tmp/kafka-logs-1
+config/server-2.properties:
+    broker.id=2
+    port=9094
+    log.dir=/tmp/kafka-logs-2
+
+说明：
+broker.id: broker节点的唯一标识
+port: broker节点使用端口号
+log.dir: 消息目录位置
+
+4. 启动3个broker节点
+$ JMX_PORT=9997 bin/kafka-server-start.sh config/server-1.properties &
+$ JMX_PORT=9998 bin/kafka-server-start.sh config/server-2.properties &
+$ JMX_PORT=9999 bin/kafka-server-start.sh config/server.properties &
+
+5. 创建topic并查看
+$ bin/kafka-create-topic.sh --zookeeper localhost:2181 --replica 3 --partition 1 --topic 3test
+creation succeeded!
+
+$ bin/kafka-list-topic.sh --zookeeper localhost:2181
+topic: 3test    partition: 0    leader: 2       replicas: 2,1,0 isr: 2,1,0
+topic: test     partition: 0    leader: 0       replicas: 0     isr: 0
+topic: test_topic       partition: 0    leader: 1       replicas: 0,1,2 isr: 1,2,0
+说明：
+partiton： partion id，由于此处只有一个partition，因此partition id 为0
+leader：当前负责读写的lead broker id
+relicas：当前partition的所有replication broker  list
+isr：relicas的子集，只包含出于活动状态的broker
+
+6.启动consumer & producer，并在producer启动后的console输入一些信息
+$ bin/kafka-console-consumer.sh --zookeeper localhost:2181 --from-beginning --topic 3test
+message1
+message3
+message2
+
+$ bin/kafka-console-producer.sh --broker-list localhost:9092,localhost:9093,localhost:9094 --topic 3test
+message1
+message3
+message2
+
+producer发送的数据consumer都能正常消费
+
+7. 干掉follow broker
+杀掉一个非lead broker（lead broker id为2）
+$ pkill -9 -f server-1.properties
+
+查看topic：
+$ bin/kafka-list-topic.sh --zookeeper localhost:2181
+topic: 3test    partition: 0    leader: 2       replicas: 2,1,0 isr: 2,0
+topic: test     partition: 0    leader: 0       replicas: 0     isr: 0
+topic: test_topic       partition: 0    leader: 2       replicas: 0,1,2 isr: 2,0
+此时，存活的broker只有2,0
+测试：produce发送消息，consumer能正常接收到
+
+8. 继续干掉leader broker
+
+干掉leader broker后，连续查看topic状态
+$ pkill -9 -f server-2.properties                 
+$ bin/kafka-list-topic.sh --zookeeper localhost:2181
+topic: 3test    partition: 0    leader: 2       replicas: 2,1,0 isr: 2,0
+topic: test     partition: 0    leader: 0       replicas: 0     isr: 0
+topic: test_topic       partition: 0    leader: 2       replicas: 0,1,2 isr: 2,0
+$ bin/kafka-list-topic.sh --zookeeper localhost:2181
+topic: 3test    partition: 0    leader: 2       replicas: 2,1,0 isr: 2,0
+topic: test     partition: 0    leader: 0       replicas: 0     isr: 0
+topic: test_topic       partition: 0    leader: 2       replicas: 0,1,2 isr: 2,0
+$ bin/kafka-list-topic.sh --zookeeper localhost:2181
+topic: 3test    partition: 0    leader: 0       replicas: 2,1,0 isr: 0
+topic: test     partition: 0    leader: 0       replicas: 0     isr: 0
+topic: test_topic       partition: 0    leader: 0       replicas: 0,1,2 isr: 0
+$ bin/kafka-list-topic.sh --zookeeper localhost:2181
+topic: 3test    partition: 0    leader: 0       replicas: 2,1,0 isr: 0
+topic: test     partition: 0    leader: 0       replicas: 0     isr: 0
+topic: test_topic       partition: 0    leader: 0       replicas: 0,1,2 isr: 0
+杀掉leader broker过了一会，broker 0成为新的leader broker
+测试：produce发送消息，consumer能正常接收到cmd
+
+
+4. kafka性能测试命令用法：
+4.1 创建topic
+bin/kafka-topics.sh --zookeeper 192.168.2.225:2182,192.168.2.225:2183/config/mobile/mq/mafka02 --create --topic test-rep-one --partitions 6 --replication-factor 1
+
+4.2 kafka-producer-perf-test.sh中参数说明：
+messages                生产者发送总的消息数量
+message-size                每条消息大小
+batch-size                每次批量发送消息的数量
+topics                        生产者发送的topic
+threads                        生产者使用几个线程同时发送
+broker-list                安装kafka服务的机器ip:port列表
+producer-num-retries        一个消息失败发送重试次数
+request-timeout-ms        一个消息请求发送超时时间
+
+4.3 bin/kafka-consumer-perf-test.sh中参数说明：
+zookeeperzk                配置
+messages                消费者消费消息总数量
+topic                        消费者需要消费的topic
+threads                        消费者使用几个线程同时消费
+group                        消费者组名称
+socket-buffer-sizesocket        缓冲大小
+fetch-size                每次向kafka broker请求消费大小
+consumer.timeout.ms        消费者去kafka broker拿去一条消息超时时间
+
+4.4 生产者发送数据：
+bin/kafka-producer-perf-test.sh --messages 5000000 --message-size 5000  --batch-size 5000 --topics test-rep-one --threads 8 --broker-list mobile-esb03:9092,mobile-esb04:9092,mobile-esb05:9092
+ 
+
+4.5 消费者消费数据
+bin/kafka-consumer-perf-test.sh --zookeeper 192.168.2.225:2182,192.168.2.225:2183/config/mobile/mq/mafka02 --messages 50000000 --topic test-rep-one --threads 1
+ 
+
+
+
+5. 分布式连通性测试 
+
+Zookeeper Server, Kafka Server, Producer都放在服务器server1上，ip地址为192.168.1.10 
+Consumer放在服务器server2上，ip地址为192.168.1.12。 
+
+分别运行server1的producer和server2的consumer， 
+bin/kafka-console-producer.sh --broker-list 192.168.1.10:9092 --topic test  
+
+bin/kafka-console-consumer.sh --zookeeper 192.168.1.10:2181 --topic test --from-beginning  
+
+在producer的console端输入字符串，consumer报Connection refused错误： 
+
+broker, producer和consumer都注册到zookeeper上，producer和consumer的参数明确指定。问题出在broker的配置文件server.properties上： 
+# Hostname the broker will bind to. If not set, the server will bind to all interfaces  
+#host.name=localhost  
+
+host名称没有指定，就是127.0.0.1，consumer去broker拿数据就有问题。设置为192.168.1.10，重启服务就好了。
+
+
+

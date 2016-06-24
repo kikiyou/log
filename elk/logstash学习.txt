@@ -1,0 +1,3748 @@
+Hello World
+
+和绝大多数 IT 技术介绍一样，我们以一个输出 "hello world" 的形式开始我们的 logstash 学习。
+运行
+
+在终端中，像下面这样运行命令来启动 Logstash 进程：
+# bin/logstash -e 'input{stdin{}}output{stdout{codec=>rubydebug}}'
+然后你会发现终端在等待你的输入。没问题，敲入 Hello World，回车，然后看看会返回什么结果！
+结果
+
+{
+       "message" => "Hello World",
+      "@version" => "1",
+    "@timestamp" => "2014-08-07T10:30:59.937Z",
+          "host" => "raochenlindeMacBook-Air.local",
+}
+没错！你搞定了！这就是全部你要做的。
+解释
+
+每位系统管理员都肯定写过很多类似这样的命令：cat randdata | awk '{print $2}' | sort | uniq -c | tee sortdata。这个管道符 | 可以算是 Linux 世界最伟大的发明之一(另一个是“一切皆文件”)。
+Logstash 就像管道符一样！
+你输入(就像命令行的 cat )数据，然后处理过滤(就像 awk 或者 uniq 之类)数据，最后输出(就像 tee )到其他地方。
+当然实际上，Logstash 是用不同的线程来实现这些的。如果你运行 top 命令然后按下 H 键，你就可以看到下面这样的输出：
+  PID USER      PR  NI  VIRT  RES  SHR S %CPU %MEM    TIME+  COMMAND                          
+21401 root      16   0 1249m 303m  10m S 18.6  0.2 866:25.46 |worker                           
+21467 root      15   0 1249m 303m  10m S  3.7  0.2 129:25.59 >elasticsearch.                   
+21468 root      15   0 1249m 303m  10m S  3.7  0.2 128:53.39 >elasticsearch.                   
+21400 root      15   0 1249m 303m  10m S  2.7  0.2 108:35.80 <file                             
+21403 root      15   0 1249m 303m  10m S  1.3  0.2  49:31.89 >output                           
+21470 root      15   0 1249m 303m  10m S  1.0  0.2  56:24.24 >elasticsearch.
+小贴士：logstash 很温馨的给每个线程都取了名字，输入的叫xx，过滤的叫|xx
+数据在线程之间以 事件 的形式流传。不要叫行，因为 logstash 可以处理多行事件。
+Logstash 会给事件添加一些额外信息。最重要的就是 @timestamp，用来标记事件的发生时间。因为这个字段涉及到 Logstash 的内部流转，所以必须是一个 joda 对象，如果你尝试自己给一个字符串字段重命名为 @timestamp 的话，Logstash 会直接报错。所以，请使用 filters/date 插件 来管理这个特殊字段。
+此外，大多数时候，还可以见到另外几个：
+host 标记事件发生在哪里。
+type 标记事件的唯一类型。
+tags 标记事件的某方面属性。这是一个数组，一个事件可以有多个标签。
+你可以随意给事件添加字段或者从事件里删除字段。事实上事件就是一个 Ruby 对象，或者更简单的理解为就是一个哈希也行。
+小贴士：每个 logstash 过滤插件，都会有四个方法叫 add_tag, remove_tag, add_field 和 remove_field。它们在插件过滤匹配成功时生效。+
+
+
+
+
+配置语法
+
+Logstash 社区通常习惯用 shipper，broker 和 indexer 来描述数据流中不同进程各自的角色。如下图：
+logstash arch
+
+不过我见过很多运用场景里都没有用 logstash 作为 shipper，或者说没有用 elasticsearch 作为数据存储也就是说也没有 indexer。所以，我们其实不需要这些概念。只需要学好怎么使用和配置 logstash 进程，然后把它运用到你的日志管理架构中最合适它的位置就够了。
+语法
+
+Logstash 设计了自己的 DSL —— 有点像 Puppet 的 DSL，或许因为都是用 Ruby 语言写的吧 —— 包括有区域，注释，数据类型(布尔值，字符串，数值，数组，哈希)，条件判断，字段引用等。
+区段(section)
+
+Logstash 用 {} 来定义区域。区域内可以包括插件区域定义，你可以在一个区域内定义多个插件。插件区域内则可以定义键值对设置。示例如下：1
+
+input {
+    stdin {}
+    syslog {}
+}
+数据类型
+
+Logstash 支持少量的数据值类型：
+bool
+debug => true
+string
+host => "hostname"
+number
+port => 514
+array
+match => ["datetime", "UNIX", "ISO8601"]
+hash
+options => {
+    key1 => "value1",
+    key2 => "value2"
+}
+注意：如果你用的版本低于 1.2.0，哈希的语法跟数组是一样的，像下面这样写：
+match => [ "field1", "pattern1", "field2", "pattern2" ]
+字段引用(field reference)
+
+字段是 Logstash::Event 对象的属性。我们之前提过事件就像一个哈希一样，所以你可以想象字段就像一个键值对。
+小贴士：我们叫它字段，因为 Elasticsearch 里是这么叫的。
+如果你想在 Logstash 配置中使用字段的值，只需要把字段的名字写在中括号 [] 里就行了，这就叫字段引用。
+对于 嵌套字段(也就是多维哈希表，或者叫哈希的哈希)，每层的字段名都写在 [] 里就可以了。比如，你可以从 geoip 里这样获取 longitude 值(是的，这是个笨办法，实际上有单独的字段专门存这个数据的)：
+[geoip][location][0]
+小贴士：logstash 的数组也支持倒序下标，即 [geoip][location][-1] 可以获取数组最后一个元素的值。
+Logstash 还支持变量内插，在字符串里使用字段引用的方法是这样：
+"the longitude is %{[geoip][location][0]}"
+条件判断(condition)
+
+Logstash从 1.3.0 版开始支持条件判断和表达式。
+表达式支持下面这些操作符：
+==(等于), !=(不等于), <(小于), >(大于), <=(小于等于), >=(大于等于)
+=~(匹配正则), !~（不匹配正则）
+in(包含), not in(不包含)
+and(与), or(或), nand(非与), xor(非或)
+()(复合表达式), !()(对复合表达式结果取反)
+通常来说，你都会在表达式里用到字段引用。为了尽量展示全面各种表达式，下面虚拟一个示例：
+if "_grokparsefailure" not in [tags] {
+} else if [status] !~ /^2\d\d/ or ( [url] == "/noc.gif" nand [geoip][city] != "beijing" ) {
+} else {
+}
+命令行参数
+
+Logstash 提供了一个 shell 脚本叫 logstash 方便快速运行。它支持一下参数：
+-e
+意即执行。我们在 "Hello World" 的时候已经用过这个参数了。事实上你可以不写任何具体配置，直接运行 bin/logstash -e '' 达到相同效果。这个参数的默认值是下面这样：
+input {
+    stdin { }
+}
+output {
+    stdout { }
+}
+--config 或 -f
+意即文件。真实运用中，我们会写很长的配置，甚至可能超过 shell 所能支持的 1024 个字符长度。所以我们必把配置固化到文件里，然后通过 bin/logstash -f agent.conf 这样的形式来运行。
+此外，logstash 还提供一个方便我们规划和书写配置的小功能。你可以直接用 bin/logstash -f /etc/logstash.d/ 来运行。logstash 会自动读取 /etc/logstash.d/ 目录下所有 *.conf 的文本文件，然后在自己内存里拼接成一个完整的大配置文件，再去执行。
+注意：
+
+logstash 列出目录下所有文件时，是字母排序的。而 logstash 配置段的 filter 和 output 都是顺序执行，所以顺序非常重要。采用多文件管理的用户，推荐采用数字编号方式命名配置文件，同时在配置中，严谨采用 if 判断限定不同日志的动作。
+--configtest 或 -t
+意即测试。用来测试 Logstash 读取到的配置文件语法是否能正常解析。Logstash 配置语法是用 grammar.treetop 定义的。尤其是使用了上一条提到的读取目录方式的读者，尤其要提前测试。
+--log 或 -l
+意即日志。Logstash 默认输出日志到标准错误。生产环境下你可以通过 bin/logstash -l logs/logstash.log 命令来统一存储日志。
+--pipeline-workers 或 -w
+运行 filter 和 output 的 pipeline 线程数量。默认是 CPU 核数。
+--pipeline-batch-size 或 -b
+每个 Logstash pipeline 线程，在执行具体的 filter 和 output 函数之前，最多能累积的日志条数。默认是 125 条。越大性能越好，同样也会消耗越多的 JVM 内存。
+--pipeline-batch-delay 或 -u
+每个 Logstash pipeline 线程，在打包批量日志的时候，最多等待几毫秒。默认是 5 ms。
+--pluginpath 或 -P
+可以写自己的插件，然后用 bin/logstash --pluginpath /path/to/own/plugins 加载它们。
+--verbose
+输出一定的调试日志。
+--debug
+输出更多的调试日志。
+设置文件
+
+从 Logstash 5.0 开始，新增了 $LS_HOME/config/logstash.yml 文件，可以将所有的命令行参数都通过 YAML 文件方式设置。同时为了反映命令行配置参数的层级关系，参数也都改成用.而不是-了。
+pipeline:
+    workers: 24
+    batch:
+        size: 125
+        delay: 5
+
+
+
+
+plugin的安装
+
+从 logstash 1.5.0 版本开始，logstash 将所有的插件都独立拆分成 gem 包。这样，每个插件都可以独立更新，不用等待 logstash 自身做整体更新的时候才能使用了。
+为了达到这个目标，logstash 配置了专门的 plugins 管理命令。
+plugin 用法说明
+
+Usage:
+    bin/plugin [OPTIONS] SUBCOMMAND [ARG] ...
+
+Parameters:
+    SUBCOMMAND                    subcommand
+    [ARG] ...                     subcommand arguments
+
+Subcommands:
+    install                       Install a plugin
+    uninstall                     Uninstall a plugin
+    update                        Install a plugin
+    list                          List all installed plugins
+
+Options:
+    -h, --help                    print help
+示例
+
+首先，你可以通过 bin/plugin list 查看本机现在有多少插件可用。(其实就在 vendor/bundle/jruby/1.9/gems/ 目录下)
+然后，假如你看到 https://github.com/logstash-plugins/ 下新发布了一个 logstash-output-webhdfs 模块(当然目前还没有)。打算试试，就只需要运行：
+bin/plugin install logstash-output-webhdfs
+就可以了。
+同样，假如是升级，只需要运行：
+bin/plugin update logstash-input-tcp
+即可。
+
+本地插件安装
+
+bin/plugin 不单可以通过 rubygems 平台安装插件，还可以读取本地路径的 gem 文件。这对自定义插件或者无外接网络的环境都非常有效：
+bin/plugin install /path/to/logstash-filter-crash.gem
+执行成功以后。你会发现，logstash-1.5.0 目录下的 Gemfile 文件最后会多出一段内容：
+gem "logstash-filter-crash", "1.1.0", :path => "vendor/local_gems/d354312c/logstash-filter-mweibocrash-1.1.0"
+同时 Gemfile.jruby-1.9.lock 文件开头也会多出一段内容：
+PATH
+  remote: vendor/local_gems/d354312c/logstash-filter-crash-1.1.0
+  specs:
+    logstash-filter-crash (1.1.0)
+      logstash-core (>= 1.4.0, < 2.0.0)
+
+
+
+
+
+长期运行
+
+完成上一节的初次运行后，你肯定会发现一点：一旦你按下 Ctrl+C，停下标准输入输出，logstash 进程也就随之停止了。作为一个肯定要长期运行的程序，应该怎么处理呢？
+本章节问题对于一个运维来说应该属于基础知识，鉴于 ELK 用户很多其实不是运维，添加这段内容。
+办法有很多种，下面介绍四种最常用的办法：
+标准的 service 方式
+
+采用 RPM、DEB 发行包安装的读者，推荐采用这种方式。发行包内，都自带有 sysV 或者 systemd 风格的启动程序/配置，你只需要直接使用即可。
+以 RPM 为例，/etc/init.d/logstash 脚本中，会加载 /etc/init.d/functions 库文件，利用其中的 daemon 函数，将 logstash 进程作为后台程序运行。
+所以，你只需把自己写好的配置文件，统一放在 /etc/logstash/ 目录下(注意目录下所有配置文件都应该是 .conf 结尾，且不能有其他文本文件存在。因为 logstash agent 启动的时候是读取全文件夹的)，然后运行 service logstash start 命令即可。
+最基础的 nohup 方式
+
+这是最简单的方式，也是 linux 新手们很容易搞混淆的一个经典问题：
+command
+command > /dev/null
+command > /dev/null 2>&1
+command &
+command > /dev/null &
+command > /dev/null 2>&1 &
+command &> /dev/null
+nohup command &> /dev/null
+请回答以上命令的异同……
+具体不一一解释了。直接说答案，想要维持一个长期后台运行的 logstash，你需要同时在命令前面加 nohup，后面加 &。
+更优雅的 SCREEN 方式
+
+screen 算是 linux 运维一个中高级技巧。通过 screen 命令创建的环境下运行的终端命令，其父进程不是 sshd 登录会话，而是 screen 。这样就可以即避免用户退出进程消失的问题，又随时能重新接管回终端继续操作。
+创建独立的 screen 命令如下：
+screen -dmS elkscreen_1
+接管连入创建的 elkscreen_1 命令如下：
+screen -r elkscreen_1
+然后你可以看到一个一模一样的终端，运行 logstash 之后，不要按 Ctrl+C，而是按 Ctrl+A+D 键，断开环境。想重新接管，依然 screen -r elkscreen_1 即可。
+如果创建了多个 screen，查看列表命令如下：
+screen -list
+最推荐的 daemontools 方式
+
+不管是 nohup 还是 screen，都不是可以很方便管理的方式，在运维管理一个 ELK 集群的时候，必须寻找一种尽可能简洁的办法。所以，对于需要长期后台运行的大量程序(注意大量，如果就一个进程，还是学习一下怎么写 init 脚本吧)，推荐大家使用一款 daemontools 工具。
+daemontools 是一个软件名称，不过配置略复杂。所以这里我其实是用其名称来指代整个同类产品，包括但不限于 python 实现的 supervisord，perl 实现的 ubic，ruby 实现的 god 等。
+以 supervisord 为例，因为这个出来的比较早，可以直接通过 EPEL 仓库安装。
+yum -y install supervisord --enablerepo=epel
+在 /etc/supervisord.conf 配置文件里添加内容，定义你要启动的程序：
+[program:elkpro_1]
+environment=LS_HEAP_SIZE=5000m
+directory=/opt/logstash
+command=/opt/logstash/bin/logstash -f /etc/logstash/pro1.conf -w 10 -l /var/log/logstash/pro1.log
+[program:elkpro_2]
+environment=LS_HEAP_SIZE=5000m
+directory=/opt/logstash
+command=/opt/logstash/bin/logstash -f /etc/logstash/pro2.conf -w 10 -l /var/log/logstash/pro2.log
+然后启动 service supervisord start 即可。
+logstash 会以 supervisord 子进程的身份运行，你还可以使用 supervisorctl 命令，单独控制一系列 logstash 子进程中某一个进程的启停操作：
+supervisorctl stop elkpro_2+
+
+
+
+
+
+
+
+
+
+
+
+插件配置
+
+输入插件(Input)
+
+在 "Hello World" 示例中，我们已经见到并介绍了 logstash 的运行流程和配置的基础语法。从这章开始，我们就要逐一介绍 logstash 流程中比较常用的一些插件，并在介绍中针对其主要适用的场景，推荐的配置，作一些说明。
+限于篇幅，接下来内容中，配置示例不一定能贴完整。请记住一个原则：Logstash 配置一定要有一个 input 和一个 output。在演示过程中，如果没有写明 input，默认就会使用 "hello world" 里我们已经演示过的 input/stdin ，同理，没有写明的 output 就是 output/stdout。+
+
+
+
+collectd简述
+
+本节作者：crazw
+collectd 是一个守护(daemon)进程，用来收集系统性能和提供各种存储方式来存储不同值的机制。它会在系统运行和存储信息时周期性的统计系统的相关统计信息。利用这些信息有助于查找当前系统性能瓶颈（如作为性能分析 performance analysis）和预测系统未来的 load（如能力部署capacity planning）等
+下面简单介绍一下: collectd的部署以及与logstash对接的相关配置实例
+collectd的安装
+
+解决依赖
+
+rpm -ivh "http://dl.fedoraproject.org/pub/epel/6/i386/epel-release-6-8.noarch.rpm"
+yum -y install libcurl libcurl-devel rrdtool rrdtool-devel perl-rrdtool rrdtool-prel libgcrypt-devel gcc make gcc-c++ liboping liboping-devel perl-CPAN net-snmp net-snmp-devel
+源码安装collectd
+
+wget http://collectd.org/files/collectd-5.4.1.tar.gz
+tar zxvf collectd-5.4.1.tar.gz
+cd collectd-5.4.1
+./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var --libdir=/usr/lib --mandir=/usr/share/man --enable-all-plugins
+make && make install
+安装启动脚本
+
+cp contrib/redhat/init.d-collectd /etc/init.d/collectd
+chmod +x /etc/init.d/collectd
+启动collectd
+
+service collectd start
+collectd的配置
+
+以下配置可以实现对服务器基本的CPU、内存、网卡流量、磁盘 IO 以及磁盘空间占用情况的监控:
+Hostname "host.example.com"
+LoadPlugin interface
+LoadPlugin cpu
+LoadPlugin memory
+LoadPlugin network
+LoadPlugin df
+LoadPlugin disk
+<Plugin interface>
+    Interface "eth0"
+    IgnoreSelected false
+</Plugin>
+<Plugin network>
+    <Server "10.0.0.1" "25826"> ## logstash 的 IP 地址和 collectd 的数据接收端口号
+    </Server>
+</Plugin>
+logstash的配置
+
+以下配置实现通过 logstash 监听 25826 端口,接收从 collectd 发送过来的各项检测数据:
+示例一：
+
+input {
+ collectd {
+    port => 25826 ## 端口号与发送端对应
+    type => collectd
+}
+示例二：（推荐）
+
+udp {
+    port => 25826
+    buffer_size => 1452
+    workers => 3          # Default is 2
+    queue_size => 30000   # Default is 2000
+    codec => collectd { }
+    type => "collectd"
+}
+运行结果
+
+下面是简单的一个输出结果：
+{
+  "_index": "logstash-2014.12.11",
+  "_type": "collectd",
+  "_id": "dS6vVz4aRtK5xS86kwjZnw",
+  "_score": null,
+  "_source": {
+    "host": "host.example.com",
+    "@timestamp": "2014-12-11T06:28:52.118Z",
+    "plugin": "interface",
+    "plugin_instance": "eth0",
+    "collectd_type": "if_packets",
+    "rx": 19147144,
+    "tx": 3608629,
+    "@version": "1",
+    "type": "collectd",
+    "tags": [
+      "_grokparsefailure"
+    ]
+  },
+  "sort": [
+    1418279332118
+  ]
+}
+
+
+读取文件(File)
+
+分析网站访问日志应该是一个运维工程师最常见的工作了。所以我们先学习一下怎么用 logstash 来处理日志文件。
+Logstash 使用一个名叫 FileWatch 的 Ruby Gem 库来监听文件变化。这个库支持 glob 展开文件路径，而且会记录一个叫 .sincedb 的数据库文件来跟踪被监听的日志文件的当前读取位置。所以，不要担心 logstash 会漏过你的数据。
+sincedb 文件中记录了每个被监听的文件的 inode, major number, minor number 和 pos。
+配置示例
+
+input {
+    file {
+        path => ["/var/log/*.log", "/var/log/message"]
+        type => "system"
+        start_position => "beginning"
+    }
+}
+解释
+
+有一些比较有用的配置项，可以用来指定 FileWatch 库的行为：
+discover_interval
+logstash 每隔多久去检查一次被监听的 path 下是否有新文件。默认值是 15 秒。
+exclude
+不想被监听的文件可以排除出去，这里跟 path 一样支持 glob 展开。
+close_older
+一个已经监听中的文件，如果超过这个值的时间内没有更新内容，就关闭监听它的文件句柄。默认是 3600 秒，即一小时。
+ignore_older
+在每次检查文件列表的时候，如果一个文件的最后修改时间超过这个值，就忽略这个文件。默认是 86400 秒，即一天。
+sincedb_path
+如果你不想用默认的 $HOME/.sincedb(Windows 平台上在 C:\Windows\System32\config\systemprofile\.sincedb)，可以通过这个配置定义 sincedb 文件到其他位置。
+sincedb_write_interval
+logstash 每隔多久写一次 sincedb 文件，默认是 15 秒。
+stat_interval
+logstash 每隔多久检查一次被监听文件状态（是否有更新），默认是 1 秒。
+start_position
+logstash 从什么位置开始读取文件数据，默认是结束位置，也就是说 logstash 进程会以类似 tail -F 的形式运行。如果你是要导入原有数据，把这个设定改成 "beginning"，logstash 进程就从头开始读取，有点类似 cat，但是读到最后一行不会终止，而是继续变成 tail -F。
+注意
+
+通常你要导入原有数据进 Elasticsearch 的话，你还需要 filter/date 插件来修改默认的"@timestamp" 字段值。稍后会学习这方面的知识。
+FileWatch 只支持文件的绝对路径，而且会不自动递归目录。所以有需要的话，请用数组方式都写明具体哪些文件。
+LogStash::Inputs::File 只是在进程运行的注册阶段初始化一个 FileWatch 对象。所以它不能支持类似 fluentd 那样的 path => "/path/to/%{+yyyy/MM/dd/hh}.log" 写法。达到相同目的，你只能写成 path => "/path/to/*/*/*/*.log"。FileWatch 模块提供了一个稍微简单一点的写法：/path/to/**/*.log，用 ** 来缩写表示递归全部子目录。
+start_position 仅在该文件从未被监听过的时候起作用。如果 sincedb 文件中已经有这个文件的 inode 记录了，那么 logstash 依然会从记录过的 pos 开始读取数据。所以重复测试的时候每回需要删除 sincedb 文件(官方博客上提供了另一个巧妙的思路：将 sincedb_path 定义为 /dev/null，则每次重启自动从头开始读)。
+因为 windows 平台上没有 inode 的概念，Logstash 某些版本在 windows 平台上监听文件不是很靠谱。windows 平台上，推荐考虑使用 nxlog 作为收集端，参阅本书稍后章节。
+
+
+标准输入(Stdin)
+
+我们已经见过好几个示例使用 stdin 了。这也应该是 logstash 里最简单和基础的插件了。
+所以，在这段中，我们可以学到一些未来每个插件都会有的一些方法。
+配置示例
+
+input {
+    stdin {
+        add_field => {"key" => "value"}
+        codec => "plain"
+        tags => ["add"]
+        type => "std"
+    }
+}
+运行结果
+
+用上面的新 stdin 设置重新运行一次最开始的 hello world 示例。我建议大家把整段配置都写入一个文本文件，然后运行命令：bin/logstash -f stdin.conf。输入 "hello world" 并回车后，你会在终端看到如下输出：
+{
+       "message" => "hello world",
+      "@version" => "1",
+    "@timestamp" => "2014-08-08T06:48:47.789Z",
+          "type" => "std",
+          "tags" => [
+        [0] "add"
+    ],
+           "key" => "value",
+          "host" => "raochenlindeMacBook-Air.local"
+}
+解释
+
+type 和 tags 是 logstash 事件中两个特殊的字段。通常来说我们会在输入区段中通过 type 来标记事件类型 —— 我们肯定是提前能知道这个事件属于什么类型的。而 tags 则是在数据处理过程中，由具体的插件来添加或者删除的。
+最常见的用法是像下面这样：
+input {
+    stdin {
+        type => "web"
+    }
+}
+filter {
+    if [type] == "web" {
+        grok {
+            match => ["message", %{COMBINEDAPACHELOG}]
+        }
+    }
+}
+output {
+    if "_grokparsefailure" in [tags] {
+        nagios_nsca {
+            nagios_status => "1"
+        }
+    } else {
+        elasticsearch {
+        }
+    }
+}
+
+
+
+读取 Syslog 数据
+
+syslog 可能是运维领域最流行的数据传输协议了。当你想从设备上收集系统日志的时候，syslog 应该会是你的第一选择。尤其是网络设备，比如思科 —— syslog 几乎是唯一可行的办法。
+我们这里不解释如何配置你的 syslog.conf, rsyslog.conf 或者 syslog-ng.conf 来发送数据，而只讲如何把 logstash 配置成一个 syslog 服务器来接收数据。
+有关 rsyslog 的用法，稍后的类型项目一节中，会有更详细的介绍。
+配置示例
+
+input {
+  syslog {
+    port => "514"
+  }
+}
+运行结果
+
+作为最简单的测试，我们先暂停一下本机的 syslogd (或 rsyslogd )进程，然后启动 logstash 进程（这样就不会有端口冲突问题）。现在，本机的 syslog 就会默认发送到 logstash 里了。我们可以用自带的 logger 命令行工具发送一条 "Hello World"信息到 syslog 里（即 logstash 里）。看到的 logstash 输出像下面这样：
+{
+           "message" => "Hello World",
+          "@version" => "1",
+        "@timestamp" => "2014-08-08T09:01:15.911Z",
+              "host" => "127.0.0.1",
+          "priority" => 31,
+         "timestamp" => "Aug  8 17:01:15",
+         "logsource" => "raochenlindeMacBook-Air.local",
+           "program" => "com.apple.metadata.mdflagwriter",
+               "pid" => "381",
+          "severity" => 7,
+          "facility" => 3,
+    "facility_label" => "system",
+    "severity_label" => "Debug"
+}
+解释
+
+Logstash 是用 UDPSocket, TCPServer 和 LogStash::Filters::Grok 来实现 LogStash::Inputs::Syslog 的。所以你其实可以直接用 logstash 配置实现一样的效果：
+input {
+  tcp {
+    port => "8514"
+  }
+}
+filter {
+  grok {
+    match => ["message", "%{SYSLOGLINE}" ]
+  }
+  syslog_pri { }
+}
+最佳实践
+
+建议在使用 LogStash::Inputs::Syslog 的时候走 TCP 协议来传输数据。
+因为具体实现中，UDP 监听器只用了一个线程，而 TCP 监听器会在接收每个连接的时候都启动新的线程来处理后续步骤。
+如果你已经在使用 UDP 监听器收集日志，用下行命令检查你的 UDP 接收队列大小：
+# netstat -plnu | awk 'NR==1 || $4~/:514$/{print $2}'
+Recv-Q
+228096
+228096 是 UDP 接收队列的默认最大大小，这时候 linux 内核开始丢弃数据包了！
+强烈建议使用LogStash::Inputs::TCP和 LogStash::Filters::Grok 配合实现同样的 syslog 功能！
+虽然 LogStash::Inputs::Syslog 在使用 TCPServer 的时候可以采用多线程处理数据的接收，但是在同一个客户端数据的处理中，其 grok 和 date 是一直在该线程中完成的，这会导致总体上的处理性能几何级的下降 —— 经过测试，TCPServer 每秒可以接收 50000 条数据，而在同一线程中启用 grok 后每秒只能处理 5000 条，再加上 date 只能达到 500 条！
+才将这两步拆分到 filters 阶段后，logstash 支持对该阶段插件单独设置多线程运行，大大提高了总体处理性能。在相同环境下， logstash -f tcp.conf -w 20 的测试中，总体处理性能可以达到每秒 30000 条数据！
+注：测试采用 logstash 作者提供的 yes "<44>May 19 18:30:17 snack jls: foo bar 32" | nc localhost 3000 命令。出处见：https://github.com/jordansissel/experiments/blob/master/ruby/jruby-netty/syslog-server/Makefile
+小贴士
+
+如果你实在没法切换到 TCP 协议，你可以自己写程序，或者使用其他基于异步 IO 框架(比如 libev )的项目。下面是一个简单的异步 IO 实现 UDP 监听数据输入 Elasticsearch 的示例：
+https://gist.github.com/chenryn/7c922ac424324ee0d695+
+
+
+读取网络数据(TCP)
+
+未来你可能会用 Redis 服务器或者其他的消息队列系统来作为 logstash broker 的角色。不过 Logstash 其实也有自己的 TCP/UDP 插件，在临时任务的时候，也算能用，尤其是测试环境。
+小贴士：虽然 LogStash::Inputs::TCP 用 Ruby 的 Socket 和 OpenSSL 库实现了高级的 SSL 功能，但 Logstash 本身只能在 SizedQueue 中缓存 20 个事件。这就是我们建议在生产环境中换用其他消息队列的原因。
+配置示例
+
+input {
+    tcp {
+        port => 8888
+        mode => "server"
+        ssl_enable => false
+    }
+}
+常见场景
+
+目前来看，LogStash::Inputs::TCP 最常见的用法就是配合 nc 命令导入旧数据。在启动 logstash 进程后，在另一个终端运行如下命令即可导入数据：
+# nc 127.0.0.1 8888 < olddata
+这种做法比用 LogStash::Inputs::File 好，因为当 nc 命令结束，我们就知道数据导入完毕了。而用 input/file 方式，logstash 进程还会一直等待新数据输入被监听的文件，不能直接看出是否任务完成了。+
+
+
+
+
+
+
+编码插件(Codec)
+
+Codec 是 logstash 从 1.3.0 版开始新引入的概念(Codec 来自 Coder/decoder 两个单词的首字母缩写)。
+在此之前，logstash 只支持纯文本形式输入，然后以过滤器处理它。但现在，我们可以在输入 期处理不同类型的数据，这全是因为有了 codec 设置。
+所以，这里需要纠正之前的一个概念。Logstash 不只是一个input | filter | output 的数据流，而是一个 input | decode | filter | encode | output 的数据流！codec 就是用来 decode、encode 事件的。
+codec 的引入，使得 logstash 可以更好更方便的与其他有自定义数据格式的运维产品共存，比如 graphite、fluent、netflow、collectd，以及使用 msgpack、json、edn 等通用数据格式的其他产品等。
+事实上，我们在第一个 "hello world" 用例中就已经用过 codec 了 —— rubydebug 就是一种 codec！虽然它一般只会用在 stdout 插件中，作为配置测试或者调试的工具。
+小贴士：这个五段式的流程说明源自 Perl 版的 Logstash (后来改名叫 Message::Passing 模块)的设计。本书最后会对该模块稍作介绍。+
+
+
+
+采用 JSON 编码
+
+在早期的版本中，有一种降低 logstash 过滤器的 CPU 负载消耗的做法盛行于社区(在当时的 cookbook 上有专门的一节介绍)：直接输入预定义好的 JSON 数据，这样就可以省略掉 filter/grok 配置！
+这个建议依然有效，不过在当前版本中需要稍微做一点配置变动 —— 因为现在有专门的 codec 设置。
+配置示例
+
+社区常见的示例都是用的 Apache 的 customlog。不过我觉得 Nginx 是一个比 Apache 更常用的新型 web 服务器，所以我这里会用 nginx.conf 做示例：
+logformat json '{"@timestamp":"$time_iso8601",'
+               '"@version":"1",'
+               '"host":"$server_addr",'
+               '"client":"$remote_addr",'
+               '"size":$body_bytes_sent,'
+               '"responsetime":$request_time,'
+               '"domain":"$host",'
+               '"url":"$uri",'
+               '"status":"$status"}';
+access_log /var/log/nginx/access.log_json json;
+注意：在 $request_time 和 $body_bytes_sent 变量两头没有双引号 "，这两个数据在 JSON 里应该是数值类型！
+重启 nginx 应用，然后修改你的 input/file 区段配置成下面这样：
+input {
+    file {
+        path => "/var/log/nginx/access.log_json""
+        codec => "json"
+    }
+}
+运行结果
+
+下面访问一下你 nginx 发布的 web 页面，然后你会看到 logstash 进程输出类似下面这样的内容：
+{
+      "@timestamp" => "2014-03-21T18:52:25.000+08:00",
+        "@version" => "1",
+            "host" => "raochenlindeMacBook-Air.local",
+          "client" => "123.125.74.53",
+            "size" => 8096,
+    "responsetime" => 0.04,
+          "domain" => "www.domain.com",
+             "url" => "/path/to/file.suffix",
+          "status" => "200"
+}
+小贴士
+
+对于一个 web 服务器的访问日志，看起来已经可以很好的工作了。不过如果 Nginx 是作为一个代理服务器运行的话，访问日志里有些变量，比如说 $upstream_response_time，可能不会一直是数字，它也可能是一个 "-" 字符串！这会直接导致 logstash 对输入数据验证报异常。
+有两个办法解决这个问题：
+用 sed 在输入之前先替换 - 成 0。
+运行 logstash 进程时不再读取文件而是标准输入，这样命令就成了下面这个样子：
+tail -F /var/log/nginx/proxy_access.log_json \
+    | sed 's/upstreamtime":-/upstreamtime":0/' \
+    | /usr/local/logstash/bin/logstash -f /usr/local/logstash/etc/proxylog.conf
+日志格式中统一记录为字符串格式(即都带上双引号 ")，然后再在 logstash 中用 filter/mutate 插件来变更应该是数值类型的字符字段的值类型。
+有关 LogStash::Filters::Mutate 的内容，本书稍后会有介绍。+
+
+
+
+合并多行数据(Multiline)
+
+有些时候，应用程序调试日志会包含非常丰富的内容，为一个事件打印出很多行内容。这种日志通常都很难通过命令行解析的方式做分析。
+而 logstash 正为此准备好了 codec/multiline 插件！
+小贴士：multiline 插件也可以用于其他类似的堆栈式信息，比如 linux 的内核日志。
+配置示例
+
+input {
+    stdin {
+        codec => multiline {
+            pattern => "^\["
+            negate => true
+            what => "previous"
+        }
+    }
+}
+运行结果
+
+运行 logstash 进程，然后在等待输入的终端中输入如下几行数据：
+[Aug/08/08 14:54:03] hello world
+[Aug/08/09 14:54:04] hello logstash
+    hello best practice
+    hello raochenlin
+[Aug/08/10 14:54:05] the end
+你会发现 logstash 输出下面这样的返回：
+{
+    "@timestamp" => "2014-08-09T13:32:03.368Z",
+       "message" => "[Aug/08/08 14:54:03] hello world\n",
+      "@version" => "1",
+          "host" => "raochenlindeMacBook-Air.local"
+}
+{
+    "@timestamp" => "2014-08-09T13:32:24.359Z",
+       "message" => "[Aug/08/09 14:54:04] hello logstash\n\n    hello best practice\n\n    hello raochenlin\n",
+      "@version" => "1",
+          "tags" => [
+        [0] "multiline"
+    ],
+          "host" => "raochenlindeMacBook-Air.local"
+}
+你看，后面这个事件，在 "message" 字段里存储了三行数据！
+小贴士：你可能注意到输出的事件中都没有最后的"the end"字符串。这是因为你最后输入的回车符 \n 并不匹配设定的 ^\[ 正则表达式，logstash 还得等下一行数据直到匹配成功后才会输出这个事件。
+解释
+
+其实这个插件的原理很简单，就是把当前行的数据添加到前面一行后面，，直到新进的当前行匹配 ^\[ 正则为止。
+这个正则还可以用 grok 表达式，稍后你就会学习这方面的内容。
+Log4J 的另一种方案
+
+说到应用程序日志，log4j 肯定是第一个被大家想到的。使用 codec/multiline 也确实是一个办法。
+不过，如果你本身就是开发人员，或者可以推动程序修改变更的话，logstash 还提供了另一种处理 log4j 的方式：input/log4j。与 codec/multiline 不同，这个插件是直接调用了 org.apache.log4j.spi.LoggingEvent 处理 TCP 端口接收的数据。稍后章节会详细讲述 log4j 的用法。+
+
+
+
+
+netflow
+
+input {
+    udp {
+      port => 9995
+      codec => netflow {
+        definitions => "/home/administrator/logstash-1.4.2/lib/logstash/codecs/netflow/netflow.yaml"
+        versions => [5]
+      }
+    }
+  }
+
+  output {
+    stdout { codec => rubydebug }
+    if ( [host] =~ "10\.1\.1[12]\.1" ) {
+      elasticsearch {
+        index => "logstash_netflow5-%{+YYYY.MM.dd}"
+        host => "localhost"
+      }
+    } else {
+      elasticsearch {
+        index => "logstash-%{+YYYY.MM.dd}"
+        host => "localhost"
+      }
+    }
+  }
+curl -XPUT localhost:9200/_template/logstash_netflow5 -d '{
+    "template" : "logstash_netflow5-*",
+    "settings": {
+      "index.refresh_interval": "5s"
+    },
+    "mappings" : {
+      "_default_" : {
+        "_all" : {"enabled" : false},
+        "properties" : {
+          "@version": { "index": "analyzed", "type": "integer" },
+          "@timestamp": { "index": "analyzed", "type": "date" },
+          "netflow": {
+            "dynamic": true,
+            "type": "object",
+            "properties": {
+              "version": { "index": "analyzed", "type": "integer" },
+              "flow_seq_num": { "index": "not_analyzed", "type": "long" },
+              "engine_type": { "index": "not_analyzed", "type": "integer" },
+              "engine_id": { "index": "not_analyzed", "type": "integer" },
+              "sampling_algorithm": { "index": "not_analyzed", "type": "integer" },
+              "sampling_interval": { "index": "not_analyzed", "type": "integer" },
+              "flow_records": { "index": "not_analyzed", "type": "integer" },
+              "ipv4_src_addr": { "index": "analyzed", "type": "ip" },
+              "ipv4_dst_addr": { "index": "analyzed", "type": "ip" },
+              "ipv4_next_hop": { "index": "analyzed", "type": "ip" },
+              "input_snmp": { "index": "not_analyzed", "type": "long" },
+              "output_snmp": { "index": "not_analyzed", "type": "long" },
+              "in_pkts": { "index": "analyzed", "type": "long" },
+              "in_bytes": { "index": "analyzed", "type": "long" },
+              "first_switched": { "index": "not_analyzed", "type": "date" },
+              "last_switched": { "index": "not_analyzed", "type": "date" },
+              "l4_src_port": { "index": "analyzed", "type": "long" },
+              "l4_dst_port": { "index": "analyzed", "type": "long" },
+              "tcp_flags": { "index": "analyzed", "type": "integer" },
+              "protocol": { "index": "analyzed", "type": "integer" },
+              "src_tos": { "index": "analyzed", "type": "integer" },
+              "src_as": { "index": "analyzed", "type": "integer" },
+              "dst_as": { "index": "analyzed", "type": "integer" },
+              "src_mask": { "index": "analyzed", "type": "integer" },
+              "dst_mask": { "index": "analyzed", "type": "integer" }
+            }
+          }
+        }
+      }
+    }
+  }'
+
+
+
+
+过滤器插件(Filter)
+
+丰富的过滤器插件的存在是 logstash 威力如此强大的重要因素。名为过滤器，其实提供的不单单是过滤的功能。在本章我们就会重点介绍几个插件，它们扩展了进入过滤器的原始数据，进行复杂的逻辑处理，甚至可以无中生有的添加新的 logstash 事件到后续的流程中去！+
+
+
+
+时间处理(Date)
+
+之前章节已经提过，filters/date 插件可以用来转换你的日志记录中的时间字符串，变成 LogStash::Timestamp 对象，然后转存到 @timestamp 字段里。
+注意：因为在稍后的 outputs/elasticsearch 中常用的 %{+YYYY.MM.dd} 这种写法必须读取 @timestamp 数据，所以一定不要直接删掉这个字段保留自己的字段，而是应该用 filters/date 转换后删除自己的字段！
+这在导入旧数据的时候固然非常有用，而在实时数据处理的时候同样有效，因为一般情况下数据流程中我们都会有缓冲区，导致最终的实际处理时间跟事件产生时间略有偏差。
+小贴士：个人强烈建议打开 Nginx 的 access_log 配置项的 buffer 参数，对极限响应性能有极大提升！
+配置示例
+
+filters/date 插件支持五种时间格式：
+ISO8601
+
+类似 "2011-04-19T03:44:01.103Z" 这样的格式。具体Z后面可以有 "08:00"也可以没有，".103"这个也可以没有。常用场景里来说，Nginx 的 log_format 配置里就可以使用 $time_iso8601 变量来记录请求时间成这种格式。
+UNIX
+
+UNIX 时间戳格式，记录的是从 1970 年起始至今的总秒数。Squid 的默认日志格式中就使用了这种格式。
+UNIX_MS
+
+这个时间戳则是从 1970 年起始至今的总毫秒数。据我所知，JavaScript 里经常使用这个时间格式。
+TAI64N
+
+TAI64N 格式比较少见，是这个样子的：@4000000052f88ea32489532c。我目前只知道常见应用中， qmail 会用这个格式。
+Joda-Time 库
+
+Logstash 内部使用了 Java 的 Joda 时间库来作时间处理。所以我们可以使用 Joda 库所支持的时间格式来作具体定义。Joda 时间格式定义见下表：
+时间格式
+
+Symbol	Meaning	Presentation	Examples
+G	era	text	AD
+C	century of era (>=0)	number	20
+Y	year of era (>=0)	year	1996
+x	weekyear	year	1996
+w	week of weekyear	number	27
+e	day of week	number	2
+E	day of week	text	Tuesday; Tue
+y	year	year	1996
+D	day of year	number	189
+M	month of year	month	July; Jul; 07
+d	day of month	number	10
+a	halfday of day	text	PM
+K	hour of halfday (0~11)	number	0
+h	clockhour of halfday (1~12)	number	12
+H	hour of day (0~23)	number	0
+k	clockhour of day (1~24)	number	24
+m	minute of hour	number	30
+s	second of minute	number	55
+S	fraction of second	number	978
+z	time zone	text	Pacific Standard Time; PST
+Z	time zone offset/id	zone	-0800; -08:00; America/Los_Angeles
+'	escape for text	delimiter	
+''	single quote	literal	'
+http://joda-time.sourceforge.net/apidocs/org/joda/time/format/DateTimeFormat.html
+下面我们写一个 Joda 时间格式的配置作为示例：
+filter {
+    grok {
+        match => ["message", "%{HTTPDATE:logdate}"]
+    }
+    date {
+        match => ["logdate", "dd/MMM/yyyy:HH:mm:ss Z"]
+    }
+}
+注意：时区偏移量只需要用一个字母 Z 即可。
+时区问题的解释
+
+很多中国用户经常提一个问题：为什么 @timestamp 比我们晚了 8 个小时？怎么修改成北京时间？
+其实，Elasticsearch 内部，对时间类型字段，是统一采用 UTC 时间，存成 long 长整形数据的！对日志统一采用 UTC 时间存储，是国际安全/运维界的一个通识——欧美公司的服务器普遍广泛分布在多个时区里——不像中国，地域横跨五个时区却只用北京时间。
+对于页面查看，ELK 的解决方案是在 Kibana 上，读取浏览器的当前时区，然后在页面上转换时间内容的显示。
+所以，建议大家接受这种设定。否则，即便你用 .getLocalTime 修改，也还要面临在 Kibana 上反过去修改，以及 Elasticsearch 原有的 ["now-1h" TO "now"] 这种方便的搜索语句无法正常使用的尴尬。
+以上，请读者自行斟酌。+
+
+
+Grok 正则捕获
+
+Grok 是 Logstash 最重要的插件。你可以在 grok 里预定义好命名正则表达式，在稍后(grok参数或者其他正则表达式里)引用它。
+正则表达式语法
+
+运维工程师多多少少都会一点正则。你可以在 grok 里写标准的正则，像下面这样：
+\s+(?<request_time>\d+(?:\.\d+)?)\s+
+小贴士：这个正则表达式写法对于 Perl 或者 Ruby 程序员应该很熟悉了，Python 程序员可能更习惯写 (?P<name>pattern)，没办法，适应一下吧。
+现在给我们的配置文件添加第一个过滤器区段配置。配置要添加在输入和输出区段之间(logstash 执行区段的时候并不依赖于次序，不过为了自己看得方便，还是按次序书写吧)：
+input {stdin{}}
+filter {
+    grok {
+        match => {
+            "message" => "\s+(?<request_time>\d+(?:\.\d+)?)\s+"
+        }
+    }
+}
+output {stdout{}}
+运行 logstash 进程然后输入 "begin 123.456 end"，你会看到类似下面这样的输出：
+{
+         "message" => "begin 123.456 end",
+        "@version" => "1",
+      "@timestamp" => "2014-08-09T11:55:38.186Z",
+            "host" => "raochenlindeMacBook-Air.local",
+    "request_time" => "123.456"
+}
+漂亮！不过数据类型好像不太满意……request_time 应该是数值而不是字符串。
+我们已经提过稍后会学习用 LogStash::Filters::Mutate 来转换字段值类型，不过在 grok 里，其实有自己的魔法来实现这个功能！
+Grok 表达式语法
+
+Grok 支持把预定义的 grok 表达式 写入到文件中，官方提供的预定义 grok 表达式见：https://github.com/logstash-plugins/logstash-patterns-core/tree/master/patterns。
+注意：在新版本的logstash里面，pattern目录已经为空，最后一个commit提示core patterns将会由logstash-patterns-core gem来提供，该目录可供用户存放自定义patterns
+下面是从官方文件中摘抄的最简单但是足够说明用法的示例：
+USERNAME [a-zA-Z0-9._-]+
+USER %{USERNAME}
+第一行，用普通的正则表达式来定义一个 grok 表达式；第二行，通过打印赋值格式，用前面定义好的 grok 表达式来定义另一个 grok 表达式。
+grok 表达式的打印复制格式的完整语法是下面这样的：
+%{PATTERN_NAME:capture_name:data_type}
+小贴士：data_type 目前只支持两个值：int 和 float。
+所以我们可以改进我们的配置成下面这样：
+filter {
+    grok {
+        match => {
+            "message" => "%{WORD} %{NUMBER:request_time:float} %{WORD}"
+        }
+    }
+}
+重新运行进程然后可以得到如下结果：
+{
+         "message" => "begin 123.456 end",
+        "@version" => "1",
+      "@timestamp" => "2014-08-09T12:23:36.634Z",
+            "host" => "raochenlindeMacBook-Air.local",
+    "request_time" => 123.456
+}
+这次 request_time 变成数值类型了。
+最佳实践
+
+实际运用中，我们需要处理各种各样的日志文件，如果你都是在配置文件里各自写一行自己的表达式，就完全不可管理了。所以，我们建议是把所有的 grok 表达式统一写入到一个地方。然后用 filter/grok 的 patterns_dir 选项来指明。
+如果你把 "message" 里所有的信息都 grok 到不同的字段了，数据实质上就相当于是重复存储了两份。所以你可以用 remove_field 参数来删除掉 message 字段，或者用 overwrite 参数来重写默认的 message 字段，只保留最重要的部分。
+重写参数的示例如下：
+filter {
+    grok {
+        patterns_dir => "/path/to/your/own/patterns"
+        match => {
+            "message" => "%{SYSLOGBASE} %{DATA:message}"
+        }
+        overwrite => ["message"]
+    }
+}
+小贴士
+
+多行匹配
+
+在和 codec/multiline 搭配使用的时候，需要注意一个问题，grok 正则和普通正则一样，默认是不支持匹配回车换行的。就像你需要 =~ //m 一样也需要单独指定，具体写法是在表达式开始位置加 (?m) 标记。如下所示：
+match => {
+    "message" => "(?m)\s+(?<request_time>\d+(?:\.\d+)?)\s+"
+}
+多项选择
+
+有时候我们会碰上一个日志有多种可能格式的情况。这时候要写成单一正则就比较困难，或者全用 | 隔开又比较丑陋。这时候，logstash 的语法提供给我们一个有趣的解决方式。
+文档中，都说明 logstash/filters/grok 插件的 match 参数应该接受的是一个 Hash 值。但是因为早期的 logstash 语法中 Hash 值也是用 [] 这种方式书写的，所以其实现在传递 Array 值给 match 参数也完全没问题。所以，我们这里其实可以传递多个正则来匹配同一个字段：
+match => [
+    "message", "(?<request_time>\d+(?:\.\d+)?)",
+    "message", "%{SYSLOGBASE} %{DATA:message}",
+    "message", "(?m)%{WORD}"
+]
+logstash 会按照这个定义次序依次尝试匹配，到匹配成功为止。虽说效果跟用 | 分割写个大大的正则是一样的，但是可阅读性好了很多。
+最后也是最关键的，我强烈建议每个人都要使用 Grok Debugger 来调试自己的 grok 表达式。+
+
+
+
+GeoIP 地址查询归类
+
+GeoIP 是最常见的免费 IP 地址归类查询库，同时也有收费版可以采购。GeoIP 库可以根据 IP 地址提供对应的地域信息，包括国别，省市，经纬度等，对于可视化地图和区域统计非常有用。
+配置示例
+
+filter {
+    geoip {
+        source => "message"
+    }
+}
+运行结果
+
+{
+       "message" => "183.60.92.253",
+      "@version" => "1",
+    "@timestamp" => "2014-08-07T10:32:55.610Z",
+          "host" => "raochenlindeMacBook-Air.local",
+         "geoip" => {
+                      "ip" => "183.60.92.253",
+           "country_code2" => "CN",
+           "country_code3" => "CHN",
+            "country_name" => "China",
+          "continent_code" => "AS",
+             "region_name" => "30",
+               "city_name" => "Guangzhou",
+                "latitude" => 23.11670000000001,
+               "longitude" => 113.25,
+                "timezone" => "Asia/Chongqing",
+        "real_region_name" => "Guangdong",
+                "location" => [
+            [0] 113.25,
+            [1] 23.11670000000001
+        ]
+    }
+}
+配置说明
+
+GeoIP 库数据较多，如果你不需要这么多内容，可以通过 fields 选项指定自己所需要的。下例为全部可选内容：
+filter {
+    geoip {
+        fields => ["city_name", "continent_code", "country_code2", "country_code3", "country_name", "dma_code", "ip", "latitude", "longitude", "postal_code", "region_name", "timezone"]
+    }
+}
+需要注意的是：geoip.location 是 logstash 通过 latitude 和 longitude 额外生成的数据。所以，如果你是想要经纬度又不想重复数据的话，应该像下面这样做：
+filter { geoip { fields => ["city_name", "country_code2", "country_name", "latitude", "longitude", "region_name"] remove_field => ["[geoip][latitude]", "[geoip][longitude]"] } } ```
+小贴士
+
+geoip 插件的 "source" 字段可以是任一处理后的字段，比如 "client_ip"，但是字段内容却需要小心！geoip 库内只存有公共网络上的 IP 信息，查询不到结果的，会直接返回 null，而 logstash 的 geoip 插件对 null 结果的处理是：不生成对应的 geoip.字段。
+所以读者在测试时，如果使用了诸如 127.0.0.1, 172.16.0.1, 182.168.0.1, 10.0.0.1 等内网地址，会发现没有对应输出！
+
+
+
+JSON 编解码
+
+在上一章，已经讲过在 codec 中使用 JSON 编码。但是，有些日志可能是一种复合的数据结构，其中只是一部分记录是 JSON 格式的。这时候，我们依然需要在 filter 阶段，单独启用 JSON 解码插件。
+配置示例
+
+filter {
+    json {
+        source => "message"
+        target => "jsoncontent"
+    }
+}
+运行结果
+
+{
+    "@version": "1",
+    "@timestamp": "2014-11-18T08:11:33.000Z",
+    "host": "web121.mweibo.tc.sinanode.com",
+    "message": "{\"uid\":3081609001,\"type\":\"signal\"}",
+    "jsoncontent": {
+        "uid": 3081609001,
+        "type": "signal"
+    }
+}
+小贴士
+
+如果不打算使用多层结构的话，删掉 target 配置即可。新的结果如下：
+{
+    "@version": "1",
+    "@timestamp": "2014-11-18T08:11:33.000Z",
+    "host": "web121.mweibo.tc.sinanode.com",
+    "message": "{\"uid\":3081609001,\"type\":\"signal\"}",
+    "uid": 3081609001,
+    "type": "signal"
+}
+
+
+
+Key-Value 切分
+
+在很多情况下，日志内容本身都是一个类似于 key-value 的格式，但是格式具体的样式却是多种多样的。logstash 提供 filters/kv 插件，帮助处理不同样式的 key-value 日志，变成实际的 LogStash::Event 数据。
+配置示例
+
+filter {
+    ruby {
+        init => "@kname = ['method','uri','verb']"
+        code => "
+            new_event = LogStash::Event.new(Hash[@kname.zip(event.get('request').split('|'))])
+            new_event.remove('@timestamp')
+            event.append(new_event)""
+        "
+    }
+    if [uri] {
+        ruby {
+            init => "@kname = ['url_path','url_args']"
+            code => "
+                new_event = LogStash::Event.new(Hash[@kname.zip(event.get('uri').split('?'))])
+                new_event.remove('@timestamp')
+                event.append(new_event)""
+            "
+        }
+        kv {
+            prefix => "url_"
+            source => "url_args"
+            field_split => "&"
+            remove_field => [ "url_args", "uri", "request" ]
+        }
+    }
+}
+解释
+
+Nginx 访问日志中的 $request，通过这段配置，可以详细切分成 method, url_path, verb, url_a, url_b ...
+进一步的，如果 url_args 中有过多字段，可能导致 Elasticsearch 集群因为频繁 update mapping 或者消耗太多内存在 cluster state 上而宕机。所以，更优的选择，是只保留明确有用的 url_args 内容，其他部分舍去。
+    kv {
+        prefix => "url_"
+        source => "url_args"
+        field_split => "&"
+        include_keys => [ "uid", "cip" ]
+        remove_field => [ "url_args", "uri", "request" ]
+    }
+上例即表示，除了 url_uid 和 url_cip 两个字段以外，其他的 url_* 都不保留。
+
+
+数值统计(Metrics)
+
+filters/metrics 插件是使用 Ruby 的 Metriks 模块来实现在内存里实时的计数和采样分析。该模块支持两个类型的数值分析：meter 和 timer。下面分别举例说明：
+Meter 示例(速率阈值检测)
+
+web 访问日志的异常状态码频率是运维人员会非常关心的一个数据。通常我们的做法，是通过 logstash 或者其他日志分析脚本，把计数发送到 rrdtool 或者 graphite 里面。然后再通过 check-graphite 脚本之类的东西来检查异常并报警。
+事实上这个事情可以直接在 logstash 内部就完成。比如如果最近一分钟 504 请求的个数超过 100 个就报警：
+filter {
+    metrics {
+        meter => "error_%{status}"
+        add_tag => "metric"
+        ignore_older_than => 10
+    }
+    if "metric" in [tags] {
+        ruby {
+            code => "event.cancel if event.get('[error_504][rate_1m]') * 60 < 100"
+        }
+    }
+}
+output {
+    if "metric" in [tags] {
+        exec {
+            command => "echo \"Out of threshold: %{[error_504][rate_1m]}\""
+        }
+    }
+}
+这里需要注意 *60 的含义。
+metriks 模块生成的 rate_1m/5m/15m 意思是：最近 1，5，15 分钟的每秒速率！
+Timer 示例(box and whisker 异常检测)
+
+官版的 filters/metrics 插件只适用于 metric 事件的检查。由插件生成的新事件内部不存有来自 input 区段的实际数据信息。所以，要完成我们的百分比分布箱体检测，需要首先对代码稍微做几行变动，即在 metric 的 timer 事件里加一个属性，存储最近一个实际事件的数值：https://github.com/chenryn/logstash/commit/bc7bf34caf551d8a149605cf28e7c5d33fae7458
+有了这个 last 值，然后我们就可以用如下配置来探测异常数据了：
+filter {
+    metrics {
+        timer => {"rt" => "%{request_time}"}
+        percentiles => [25, 75]
+        add_tag => "percentile"
+    }
+    if "percentile" in [tags] {
+        ruby {
+            code => "l=event.get('[rt][p75]')-event.get('[rt][p25]');event.set('[rt][low]', event.get('[rt][p25]')-l);event.set('[rt][high]',event.get('[rt][p75]')+l)"
+        }
+    }
+}
+output {
+    if "percentile" in [tags] and ([rt][last] > [rt][high] or [rt][last] < [rt][low]) {
+        exec {
+            command => "echo \"Anomaly: %{[rt][last]}\""
+        }
+    }
+}
+小贴士：有关 box and shisker plot 内容和重要性，参见《数据之魅》一书。+
+
+
+
+数据修改(Mutate)
+
+filters/mutate 插件是 Logstash 另一个重要插件。它提供了丰富的基础类型数据处理能力。包括类型转换，字符串处理和字段处理等。
+类型转换
+
+类型转换是 filters/mutate 插件最初诞生时的唯一功能。其应用场景在之前 Codec/JSON 小节已经提到。
+可以设置的转换类型包括："integer"，"float" 和 "string"。示例如下：
+filter {
+    mutate {
+        convert => ["request_time", "float"]
+    }
+}
+注意：mutate 除了转换简单的字符值，还支持对数组类型的字段进行转换，即将 ["1","2"] 转换成 [1,2]。但不支持对哈希类型的字段做类似处理。有这方面需求的可以采用稍后讲述的 filters/ruby 插件完成。
+字符串处理
+
+gsub
+仅对字符串类型字段有效
+    gsub => ["urlparams", "[\\?#]", "_"]
+split
+filter {
+    mutate {
+        split => ["message", "|"]
+    }
+}
+随意输入一串以|分割的字符，比如 "123|321|adfd|dfjld*=123"，可以看到如下输出：
+{
+    "message" => [
+        [0] "123",
+        [1] "321",
+        [2] "adfd",
+        [3] "dfjld*=123"
+    ],
+    "@version" => "1",
+    "@timestamp" => "2014-08-20T15:58:23.120Z",
+    "host" => "raochenlindeMacBook-Air.local"
+}
+join
+仅对数组类型字段有效
+我们在之前已经用 split 割切的基础再 join 回去。配置改成：
+filter {
+    mutate {
+        split => ["message", "|"]
+    }
+    mutate {
+        join => ["message", ","]
+    }
+}
+filter 区段之内，是顺序执行的。所以我们最后看到的输出结果是：
+{
+    "message" => "123,321,adfd,dfjld*=123",
+    "@version" => "1",
+    "@timestamp" => "2014-08-20T16:01:33.972Z",
+    "host" => "raochenlindeMacBook-Air.local"
+}
+merge
+合并两个数组或者哈希字段。依然在之前 split 的基础上继续：
+filter {
+    mutate {
+        split => ["message", "|"]
+    }
+    mutate {
+        merge => ["message", "message"]
+    }
+}
+我们会看到输出：
+{
+       "message" => [
+        [0] "123",
+        [1] "321",
+        [2] "adfd",
+        [3] "dfjld*=123",
+        [4] "123",
+        [5] "321",
+        [6] "adfd",
+        [7] "dfjld*=123"
+    ],
+      "@version" => "1",
+    "@timestamp" => "2014-08-20T16:05:53.711Z",
+          "host" => "raochenlindeMacBook-Air.local"
+}
+如果 src 字段是字符串，会自动先转换成一个单元素的数组再合并。把上一示例中的来源字段改成 "host"：
+filter {
+    mutate {
+        split => ["message", "|"]
+    }
+    mutate {
+        merge => ["message", "host"]
+    }
+}
+结果变成：
+{
+       "message" => [
+        [0] "123",
+        [1] "321",
+        [2] "adfd",
+        [3] "dfjld*=123",
+        [4] "raochenlindeMacBook-Air.local"
+    ],
+      "@version" => "1",
+    "@timestamp" => "2014-08-20T16:07:53.533Z",
+          "host" => [
+        [0] "raochenlindeMacBook-Air.local"
+    ]
+}
+看，目的字段 "message" 确实多了一个元素，但是来源字段 "host" 本身也由字符串类型变成数组类型了！
+下面你猜，如果来源位置写的不是字段名而是直接一个字符串，会产生什么奇特的效果呢？
+strip
+lowercase
+uppercase
+字段处理
+
+rename
+重命名某个字段，如果目的字段已经存在，会被覆盖掉：
+filter {
+    mutate {
+        rename => ["syslog_host", "host"]
+    }
+}
+update
+更新某个字段的内容。如果字段不存在，不会新建。
+replace
+作用和 update 类似，但是当字段不存在的时候，它会起到 add_field 参数一样的效果，自动添加新的字段。
+执行次序
+
+需要注意的是，filter/mutate 内部是有执行次序的。其次序如下：
+    rename(event) if @rename
+    update(event) if @update
+    replace(event) if @replace
+    convert(event) if @convert
+    gsub(event) if @gsub
+    uppercase(event) if @uppercase
+    lowercase(event) if @lowercase
+    strip(event) if @strip
+    remove(event) if @remove
+    split(event) if @split
+    join(event) if @join
+    merge(event) if @merge
+
+    filter_matched(event)
+而 filter_matched 这个 filters/base.rb 里继承的方法也是有次序的。
+  @add_field.each do |field, value|
+  end
+  @remove_field.each do |field|
+  end
+  @add_tag.each do |tag|
+  end
+  @remove_tag.each do |tag|
+  end
+
+
+随心所欲的 Ruby 处理
+
+如果你稍微懂那么一点点 Ruby 语法的话，filters/ruby 插件将会是一个非常有用的工具。
+比如你需要稍微修改一下 LogStash::Event 对象，但是又不打算为此写一个完整的插件，用 filters/ruby 插件绝对感觉良好。
+配置示例
+
+filter {
+    ruby {
+        init => "@kname = ['client','servername','url','status','time','size','upstream','upstreamstatus','upstreamtime','referer','xff','useragent']"
+        code => "
+            new_event = LogStash::Event.new(Hash[@kname.zip(event.get('message').split('|'))])
+            new_event.remove('@timestamp')
+            event.append(new_event)"
+    }
+}
+官网示例是一个比较有趣但是没啥大用的做法 —— 随机取消 90% 的事件。
+所以上面我们给出了一个有用而且强大的实例。
+解释
+
+通常我们都是用 filters/grok 插件来捕获字段的，但是正则耗费大量的 CPU 资源，很容易成为 Logstash 进程的瓶颈。
+而实际上，很多流经 Logstash 的数据都是有自己预定义的特殊分隔符的，我们可以很简单的直接切割成多个字段。
+filters/mutate 插件里的 "split" 选项只能切成数组，后续很不方便使用和识别。而在 filters/ruby 里，我们可以通过 "init" 参数预定义好由每个新字段的名字组成的数组，然后在 "code" 参数指定的 Ruby 语句里通过两个数组的 zip 操作生成一个哈希并添加进数组里。短短一行 Ruby 代码，可以减少 50% 以上的 CPU 使用率。
+注1：从 Logstash-2.3 开始，LogStash::Event.append 不再直接接受 Hash 对象，而必须是 LogStash::Event 对象。所以示例变成要先初始化一个新 event，再把无用的 @timestamp 移除，再 append 进去。否则会把 @timestamp 变成有两个时间的数组了！
+注2：从 Logstash-5.0 开始，LogStash::Event 改为 Java 实现，直接使用 event["parent"]["child"] 形式获取的不是原事件的引用而是复制品。需要改用 event.get('[parent][child]') 和 event.set('[parent][child]', 'value') 的方法。
+filters/ruby 插件用途远不止这一点，下一节你还会继续见到它的身影。
+更多实例
+
+2014 年 09 年 23 日新增
+filter{
+    date {
+        match => ["datetime" , "UNIX"]
+    }
+    ruby {
+        code => "event.cancel if 5 * 24 * 3600 < (event['@timestamp']-::Time.now).abs"
+    }
+}
+在实际运用中，我们几乎肯定会碰到出乎意料的输入数据。这都有可能导致 Elasticsearch 集群出现问题。
+当数据格式发生变化，比如 UNIX 时间格式变成 UNIX_MS 时间格式，会导致 logstash 疯狂创建新索引，集群崩溃。
+或者误输入过老的数据时，因为一般我们会 close 几天之前的索引以节省内存，必要时再打开。而直接尝试把数据写入被关闭的索引会导致内存问题。
+这时候我们就需要提前校验数据的合法性。上面配置，就是用于过滤掉时间范围与当前时间差距太大的非法数据的。+
+
+
+split 拆分事件
+
+上一章我们通过 multiline 插件将多行数据合并进一个事件里，那么反过来，也可以把一行数据，拆分成多个事件。这就是 split 插件。
+配置示例
+
+filter {
+    split {
+        field => "message"
+        terminator => "#"
+    }
+}
+运行结果
+
+这个测试中，我们在 intputs/stdin 的终端中输入一行数据："test1#test2"，结果看到输出两个事件：
+{
+    "@version": "1",
+    "@timestamp": "2014-11-18T08:11:33.000Z",
+    "host": "web121.mweibo.tc.sinanode.com",
+    "message": "test1"
+}
+{
+    "@version": "1",
+    "@timestamp": "2014-11-18T08:11:33.000Z",
+    "host": "web121.mweibo.tc.sinanode.com",
+    "message": "test2"
+}
+重要提示
+
+split 插件中使用的是 yield 功能，其结果是 split 出来的新事件，会直接结束其在 filter 阶段的历程，也就是说写在 split 后面的其他 filter 插件都不起作用，进入到 output 阶段。所以，一定要保证 split 配置写在全部 filter 配置的最后。
+使用了类似功能的还有 clone 插件。
+注：从 logstash-1.5.0beta1 版本以后修复该问题。+
+
+
+
+elapsed
+
+filter {
+  grok {
+    match => ["message", "%{TIMESTAMP_ISO8601} START id: (?<task_id>.*)"]
+    add_tag => [ "taskStarted" ]
+  }
+  grok {
+    match => ["message", "%{TIMESTAMP_ISO8601} END id: (?<task_id>.*)"]
+    add_tag => [ "taskTerminated"]
+  }
+  elapsed {
+    start_tag => "taskStarted"
+    end_tag => "taskTerminated"
+    unique_id_field => "task_id"
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+output配置
+保存进 Elasticsearch
+
+Logstash 可以试用不同的协议实现完成将数据写入 Elasticsearch 的工作。在不同时期，也有不同的插件实现方式。本节以最新版为准，即主要介绍 HTTP 方式。同时也附带一些原有的 node 和 transport 方式的介绍。
+配置示例
+
+output {
+    elasticsearch {
+        hosts => ["192.168.0.2:9200"]
+        index => "logstash-%{type}-%{+YYYY.MM.dd}"
+        document_type => "%{type}"
+        workers => 1
+        flush_size => 20000
+        idle_flush_time => 10
+        template_overwrite => true
+    }
+}
+解释
+
+批量发送
+
+flush_size 和 idle_flush_time 共同控制 Logstash 向 Elasticsearch 发送批量数据的行为。以上面示例来说：Logstash 会努力攒到 20000 条数据一次性发送出去，但是如果 10 秒钟内也没攒够 20000 条，Logstash 还是会以当前攒到的数据量发一次。
+默认情况下，flush_size 是 500 条，idle_flush_time 是 1 秒。这也是很多人改大了 flush_size 也没能提高写入 ES 性能的原因——Logstash 还是 1 秒钟发送一次。
+索引名
+
+写入的 ES 索引的名称，这里可以使用变量。为了更贴合日志场景，Logstash 提供了 %{+YYYY.MM.dd} 这种写法。在语法解析的时候，看到以 + 号开头的，就会自动认为后面是时间格式，尝试用时间格式来解析后续字符串。所以，之前处理过程中不要给自定义字段取个加号开头的名字……
+此外，注意索引名中不能有大写字母，否则 ES 在日志中会报 InvalidIndexNameException，但是 Logstash 不会报错，这个错误比较隐晦，也容易掉进这个坑中。
+Java 协议
+
+1.4.0 版本之前，有 logstash-output-elasticsearch, logstash-output-elasticsearch_http, logstash-output-elasticsearch_river 三个插件。
+1.4.0 到 2.0 版本之间，配合 Elasticsearch 废弃 river 方法，只剩下 logstash-output-elasticsearch 一个插件，同时实现了 node、transport、http 三种协议。
+2.0 版本开始，为了兼容性和调试方便，logstash-output-elasticsearch 改为只支持 http 协议。想继续使用 node 或者 transport 协议的用户，需要单独安装 logstash-output-elasticsearch_java 插件。
+一个小集群里，使用 node 协议最方便了。Logstash 以 elasticsearch 的 client 节点身份(即不存数据不参加选举)运行。如果你运行下面这行命令，你就可以看到自己的 logstash 进程名，对应的 node.role 值是 c：
+# curl 127.0.0.1:9200/_cat/nodes?v
+host       ip      heap.percent ram.percent load node.role master name
+local 192.168.0.102  7      c         -      logstash-local-1036-2012
+local 192.168.0.2    7      d         *      Sunstreak
+Logstash-1.5 以后，也不再分发一个内嵌的 elasticsearch 服务器。如果你想变更 node 协议下的这些配置，在 $PWD/elasticsearch.yml 文件里写自定义配置即可，logstash 会尝试自动加载这个文件。
+对于拥有很多索引的大集群，你可以用 transport 协议。logstash 进程会转发所有数据到你指定的某台主机上。这种协议跟上面的 node 协议是不同的。node 协议下的进程是可以接收到整个 Elasticsearch 集群状态信息的，当进程收到一个事件时，它就知道这个事件应该存在集群内哪个机器的分片里，所以它就会直接连接该机器发送这条数据。而 transport 协议下的进程不会保存这个信息，在集群状态更新(节点变化，索引变化都会发送全量更新)时，就不会对所有的 logstash 进程也发送这种信息。更多 Elasticsearch 集群状态的细节，参阅http://www.elasticsearch.org/guide。
+小贴士
+
+Logstash 1.4.2 在 transport 和 http 协议的情况下是固定连接指定 host 发送数据。从 1.5.0 开始，host 可以设置数组，它会从节点列表中选取不同的节点发送数据，达到 Round-Robin 负载均衡的效果。
+Kibana4 强制要求 ES 全集群所有 node 版本在 1.4 以上，Kibana4.2 要求 ES 2.0 以上。所以采用 node 方式发送数据的 logstash-1.4(携带的 Elasticsearch.jar 库是 1.1.1 版本) 会导致 Kibana4 无法运行，采用 Kibana4 的读者务必改用 http 方式。
+开发者在 IRC freenode#logstash 频道里表示："高于 1.0 版本的 Elasticsearch 应该都能跟最新版 logstash 的 node 协议一起正常工作"。此信息仅供参考，请认真测试后再上线。
+经常有同学问，为什么 Logstash 在有多个 conf 文件的情况下，进入 ES 的数据会重复，几个 conf 数据就会重复几次。其实问题原因在之前启动参数章节有提过，output 段顺序执行，没有对日志 type 进行判断的各插件配置都会全部执行一次。在 output 段对 type 进行判断的语法如下所示：
+output {
+if [type] == "nginxaccess" {
+  elasticsearch { }
+}
+}
+老版本的性能问题
+
+Logstash 1.4.2 在 http 协议下默认使用作者自己的 ftw 库，随同分发的是 0.0.39 版。该版本有内存泄露问题，长期运行下输出性能越来越差！
+解决办法：
+对性能要求不高的，可以在启动 logstash 进程时，配置环境变量 ENV["BULK"]，强制采用 elasticsearch 官方 Ruby 库。命令如下：
+export BULK="esruby"
+对性能要求高的，可以尝试采用 logstash-1.5.0RC2 。新版的 outputs/elasticsearch 放弃了 ftw 库，改用了一个 JRuby 平台专有的 Manticore 库。根据测试，性能跟 ftw 比相当接近。
+对性能要求极高的，可以手动更新 ftw 库版本，目前最新版是 0.0.42 版，据称内存问题在 0.0.40 版即解决。
+模板
+
+Elasticsearch 支持给索引预定义设置和 mapping(前提是你用的 elasticsearch 版本支持这个 API，不过估计应该都支持)。Logstash 自带有一个优化好的模板，内容如下:
+{
+  "template" : "logstash-*",
+  "settings" : {
+    "index.refresh_interval" : "5s"
+  },
+  "mappings" : {
+    "_default_" : {
+      "_all" : {"enabled" : true, "omit_norms" : true},
+      "dynamic_templates" : [ {
+        "message_field" : {
+          "match" : "message",
+          "match_mapping_type" : "string",
+          "mapping" : {
+            "type" : "string", "index" : "analyzed", "omit_norms" : true,
+            "fielddata" : { "format" : "disabled"  }
+          }
+        }
+      }, {
+        "string_fields" : {
+          "match" : "*",
+          "match_mapping_type" : "string",
+          "mapping" : {
+            "type" : "string", "index" : "analyzed", "omit_norms" : true,
+            "fielddata" : { "format" : "disabled"  },
+            "fields" : {
+              "raw" : {"type": "string", "index" : "not_analyzed", "doc_values" : true, "ignore_above" : 256}
+            }
+          }
+        }
+      }, {
+        "float_fields" : {
+          "match" : "*",
+          "match_mapping_type" : "float",
+          "mapping" : { "type" : "float", "doc_values" : true  }
+        }
+      }, {
+        "double_fields" : {
+          "match" : "*",
+          "match_mapping_type" : "double",
+          "mapping" : { "type" : "double", "doc_values" : true  }
+        }
+      }, {
+        "byte_fields" : {
+          "match" : "*",
+          "match_mapping_type" : "byte",
+          "mapping" : { "type" : "byte", "doc_values" : true  }
+        }
+      }, {
+        "short_fields" : {
+          "match" : "*",
+          "match_mapping_type" : "short",
+          "mapping" : { "type" : "short", "doc_values" : true  }
+        }
+      }, {
+        "integer_fields" : {
+          "match" : "*",
+          "match_mapping_type" : "integer",
+          "mapping" : { "type" : "integer", "doc_values" : true  }
+        }
+      }, {
+        "long_fields" : {
+          "match" : "*",
+          "match_mapping_type" : "long",
+          "mapping" : { "type" : "long", "doc_values" : true  }
+        }
+      }, {
+        "date_fields" : {
+          "match" : "*",
+          "match_mapping_type" : "date",
+          "mapping" : { "type" : "date", "doc_values" : true  }
+        }
+      }, {
+        "geo_point_fields" : {
+          "match" : "*",
+          "match_mapping_type" : "geo_point",
+          "mapping" : { "type" : "geo_point", "doc_values" : true  }
+        }
+      } ],
+      "properties" : {
+        "@timestamp": { "type": "date", "doc_values" : true  },
+        "@version": { "type": "string", "index": "not_analyzed", "doc_values" : true  },
+        "geoip"  : {
+          "type" : "object",
+          "dynamic": true,
+          "properties" : {
+            "ip": { "type": "ip", "doc_values" : true  },
+            "location" : { "type" : "geo_point", "doc_values" : true  },
+            "latitude" : { "type" : "float", "doc_values" : true  },
+            "longitude" : { "type" : "float", "doc_values" : true  }
+          }
+        }
+      }
+    }
+  }
+}
+这其中的关键设置包括：
+template for index-pattern
+只有匹配 logstash-* 的索引才会应用这个模板。有时候我们会变更 Logstash 的默认索引名称，记住你也得通过 PUT 方法上传可以匹配你自定义索引名的模板。当然，我更建议的做法是，把你自定义的名字放在 "logstash-" 后面，变成 index => "logstash-custom-%{+yyyy.MM.dd}" 这样。
+refresh_interval for indexing
+Elasticsearch 是一个近实时搜索引擎。它实际上是每 1 秒钟刷新一次数据。对于日志分析应用，我们用不着这么实时，所以 logstash 自带的模板修改成了 5 秒钟。你还可以根据需要继续放大这个刷新间隔以提高数据写入性能。
+multi-field with not_analyzed
+Elasticsearch 会自动使用自己的默认分词器(空格，点，斜线等分割)来分析字段。分词器对于搜索和评分是非常重要的，但是大大降低了索引写入和聚合请求的性能。所以 logstash 模板定义了一种叫"多字段"(multi-field)类型的字段。这种类型会自动添加一个 ".raw" 结尾的字段，并给这个字段设置为不启用分词器。简单说，你想获取 url 字段的聚合结果的时候，不要直接用 "url" ，而是用 "url.raw" 作为字段名。
+geo_point
+Elasticsearch 支持 geo_point 类型， geo distance 聚合等等。比如说，你可以请求某个 geo_point 点方圆 10 千米内数据点的总数。在 Kibana 的 tilemap 类型面板里，就会用到这个类型的数据。
+doc_values
+doc_values 是 Elasticsearch 1.0 版本引入的新特性。启用该特性的字段，索引写入的时候会在磁盘上构建 fielddata。而过去，fielddata 是固定只能使用内存的。在请求范围加大的时候，很容易触发 OOM 或者 circuit breaker 报错：
+ElasticsearchException[org.elasticsearch.common.breaker.CircuitBreakingException: Data too large, data for field [@timestamp] would be larger than limit of [639015321/609.4mb]]
+doc_values 只能给不分词(对于字符串字段就是设置了 "index":"not_analyzed"，数值和时间字段默认就没有分词) 的字段配置生效。
+doc_values 虽然用的是磁盘，但是系统本身也有自带 VFS 的 cache 效果并不会太差。据官方测试，经过 1.4 的优化后，只比使用内存的 fielddata 慢 15% 。所以，在数据量较大的情况下，强烈建议开启该配置。
+Elasticsearch 2.0 以后，doc_values 变成默认设置。这部分可以不再单独指定了。
+fielddata
+和 doc_values 对应的，则是 fielddata。在 Elasticsearch 2.x 全面启用 doc_values 后，Logstash 的默认 template 更干脆的加上了对 fielddata 的 {"format":"disabled"}。当你还对分词字段发起聚合和排序请求的时候，直接提示无法构建 fielddata 了！
+其他模板配置建议
+
+order
+如果你有自己单独定制 template 的想法，很好。这时候有几种选择：
+在 logstash/outputs/elasticsearch 配置中开启 manage_template => false 选项，然后一切自己动手；
+在 logstash/outputs/elasticsearch 配置中开启 template => "/path/to/your/tmpl.json" 选项，让 logstash 来发送你自己写的 template 文件；
+避免变更 logstash 里的配置，而是另外发送一个 template ，利用 elasticsearch 的 templates order 功能。
+这个 order 功能，就是 elasticsearch 在创建一个索引的时候，如果发现这个索引同时匹配上了多个 template ，那么就会先应用 order 数值小的 template 设置，然后再应用一遍 order 数值高的作为覆盖，最终达到一个 merge 的效果。
+比如，对上面这个模板已经很满意，只想修改一下 refresh_interval ，那么只需要新写一个：
+{
+  "order" : 1,
+  "template" : "logstash-*",
+  "settings" : {
+    "index.refresh_interval" : "20s"
+  }
+}
+然后运行 curl -XPUT http://localhost:9200/_template/template_newid -d '@/path/to/your/tmpl.json' 即可。
+logstash 默认的模板， order 是 0，id 是 logstash，通过 logstash/outputs/elasticsearch 的配置选项 template_name 修改。你的新模板就不要跟这个名字冲突了。+
+
+
+
+
+发送邮件(Email)
+
+配置示例
+
+output {
+    email {
+        to => "admin@website.com,root@website.com"
+        cc => "other@website.com"
+        via => "smtp"
+        subject => "Warning: %{title}"
+        options => {
+            smtpIporHost       => "localhost",
+            port               => 25,
+            domain             => 'localhost.localdomain',
+            userName           => nil,
+            password           => nil,
+            authenticationType => nil, # (plain, login and cram_md5)
+            starttls           => true
+        }
+        htmlbody => ""
+        body => ""
+        attachments => ["/path/to/filename"]
+    }
+}
+注意：以上示例适用于 Logstash 1.5 ，options => 的参数配置在 Logstash 2.0 之后的版本已被移除，（126 邮箱发送到 qq 邮箱）示例如下：
+output {
+    email {
+        port           =>    "25"
+        address        =>    "smtp.126.com"
+        username       =>    "test@126.com"
+        password       =>    ""
+        authentication =>    "plain"
+        use_tls        =>    true
+        from           =>    "test@126.com"
+        subject        =>    "Warning: %{title}"
+        to             =>    "test@qq.com"
+        via            =>    "smtp"
+        body           =>    "%{message}"
+    }
+}
+解释
+
+outputs/email 插件支持 SMTP 协议和 sendmail 两种方式，通过 via 参数设置。SMTP 方式有较多的 options 参数可配置。sendmail 只能利用本机上的 sendmail 服务来完成 —— 文档上描述了 Mail 库支持的 sendmail 配置参数，但实际代码中没有相关处理，不要被迷惑了。。。+
+
+
+
+调用命令执行(Exec)
+
+outputs/exec 插件的运用也非常简单，如下所示，将 logstash 切割成的内容作为参数传递给命令。这样，在每个事件到达该插件的时候，都会触发这个命令的执行。
+output {
+    exec {
+        command => "sendsms.pl \"%{message}\" -t %{user}"
+    }
+}
+需要注意的是。这种方式是每次都重新开始执行一次命令并退出。本身是比较慢速的处理方式(程序加载，网络建联等都有一定的时间消耗)。最好只用于少量的信息处理场景，比如不适用 nagios 的其他报警方式。示例就是通过短信发送消息。
+
+
+
+保存成文件(File)
+
+通过日志收集系统将分散在数百台服务器上的数据集中存储在某中心服务器上，这是运维最原始的需求。早年的 scribed ，甚至直接就把输出的语法命名为 <store>。Logstash 当然也能做到这点。
+和 LogStash::Inputs::File 不同, LogStash::Outputs::File 里可以使用 sprintf format 格式来自动定义输出到带日期命名的路径。
+配置示例
+
+output {
+    file {
+        path => "/path/to/%{+yyyy}/%{+MM}/%{+dd}/%{host}.log.gz"
+        message_format => "%{message}"
+        gzip => true
+    }
+}
+解释
+
+使用 output/file 插件首先需要注意的就是 message_format 参数。插件默认是输出整个 event 的 JSON 形式数据的。这可能跟大多数情况下使用者的期望不符。大家可能只是希望按照日志的原始格式保存就好了。所以需要定义为 %{message}，当然，前提是在之前的 filter 插件中，你没有使用 remove_field 或者 update 等参数删除或修改 %{message} 字段的内容。
+另一个非常有用的参数是 gzip。gzip 格式是一个非常奇特而友好的格式。其格式包括有：
+10字节的头，包含幻数、版本号以及时间戳
+可选的扩展头，如原文件名
+文件体，包括DEFLATE压缩的数据
+8字节的尾注，包括CRC-32校验和以及未压缩的原始数据长度
+这样 gzip 就可以一段一段的识别出来数据 —— 反过来说，也就是可以一段一段压缩了添加在后面！
+这对于我们流式添加数据简直太棒了！
+小贴士：你或许见过网络流传的 parallel 命令行工具并发处理数据的神奇文档，但在自己用的时候总见不到效果。实际上就是因为：文档中处理的 gzip 文件，可以分开处理然后再合并的。
+注意
+
+按照 Logstash 标准，其实应该可以把数据格式的定义改在 codec 插件中完成，但是 logstash-output-file 插件内部实现中跳过了 @codec.decode 这步，所以 codec 设置无法生效！
+按照 Logstash 标准，配置参数的值可以使用 event sprintf 格式。但是 logstash-output-file 插件对 event.sprintf(@path) 的结果，还附加了一步 inside_file_root? 校验(个人猜测是为了防止越权到其他路径)，这个 file_root 是通过直接对 path 参数分割 / 符号得到的。如果在 sprintf 格式中带有 / 符号，那么被切分后的结果就无法正确解析了。
+所以，如下所示配置，虽然看起来是正确的，实际效果却不对，正确写法应该是本节之前的配置示例那样。
+output {
+    file {
+        path => "/path/to/%{+yyyy/MM/dd}/%{host}.log.gz"
+        codec => line {
+            format => "%{message}"
+        }
+    }
+}
+
+
+
+
+报警到 Nagios
+
+Logstash 中有两个 output 插件是 nagios 有关的。outputs/nagios 插件发送数据给本机的 nagios.cmd 管道命令文件，outputs/nagios_nsca 插件则是 调用 send_nsca 命令以 NSCA 协议格式把数据发送给 nagios 服务器(远端或者本地皆可)。
+Nagios.Cmd
+
+nagios.cmd 是 nagios 服务器的核心组件。nagios 事件处理和内外交互都是通过这个管道文件来完成的。
+使用 CMD 方式，需要自己保证发送的 Logstash 事件符合 nagios 事件的格式。即必须在 filter 阶段预先准备好 nagios_host 和 nagios_service 字段；此外，如果在 filter 阶段也准备好 nagios_annotation 和 nagios_level 字段，这里也会自动转换成 nagios 事件信息。
+filter {
+    if [message] =~ /err/ {
+        mutate {
+            add_tag => "nagios"
+            rename => ["host", "nagios_host"]
+            replace => ["nagios_service", "logstash_check_%{type}"]
+        }
+    }
+}
+output {
+    if "nagios" in [tags] {
+        nagios { }
+    }
+}
+如果不打算在 filter 阶段提供 nagios_level ，那么也可以在该插件中通过参数配置。
+所谓 nagios_level，即我们通过 nagios plugin 检查数据时的返回值。其取值范围和含义如下：
+"0"，代表 "OK"，服务正常；
+"1"，代表 "WARNNING"，服务警告，一般 nagios plugin 命令中使用 -w 参数设置该阈值；
+"2"，代表 "CRITICAL"，服务危急，一般 nagios plugin 命令中使用 -c 参数设置该阈值；
+"3"，代表 "UNKNOWN"，未知状态，一般会在 timeout 等情况下出现。
+默认情况下，该插件会以 "CRITICAL" 等级发送报警给 Nagios 服务器。
+nagios.cmd 文件的具体位置，可以使用 command_file 参数设置。默认位置是 "/var/lib/nagios3/rw/nagios.cmd"。
+关于和 nagios.cmd 交互的具体协议说明，有兴趣的读者请阅读 Using external commands in Nagios 一文，这是《Learning Nagios 3.0》书中内容节选。
+NSCA
+
+NSCA 是一种标准的 nagios 分布式扩展协议。分布在各机器上的 send_nsca 进程主动将监控数据推送给远端 nagios 服务器的 NSCA 进程。
+当 Logstash 跟 nagios 服务器没有在同一个主机上运行的时候，就只能通过 NSCA 方式来发送报警了 —— 当然也必须在 Logstash 服务器上安装 send_nsca 命令。
+nagios 事件所需要的几个属性在上一段中已经有过描述。不过在使用这个插件的时候，不要求提前准备好，而是可以在该插件内部定义参数：
+output {
+    nagios_nsca {
+        nagios_host => "%{host}"
+        nagios_service => "logstash_check_%{type}"
+        nagios_status => "2"
+        message_format => "%{@timestamp}: %{message}"
+        host => "nagiosserver.domain.com"
+    }
+}
+这里请注意，host 和 nagios_host 两个参数，分别是用来设置 nagios 服务器的地址，和报警信息中有问题的服务器地址。
+关于 NSCA 原理，架构和配置说明，还不了解的读者请阅读官方网站 Using NSClient++ from nagios with NSCA 一节。
+推荐阅读
+
+除了 nagios 以外，logstash 同样可以发送信息给其他常见监控系统。方式和 nagios 大同小异：
+outputs/ganglia 插件通过 UDP 协议，发送 gmetric 型数据给本机/远端的 gmond 或者 gmetad
+outputs/zabbix 插件调用本机的 zabbix_sender 命令发送
+
+
+
+输出到 Statsd
+
+基础知识
+
+Statsd 最早是 2008 年 Flickr 公司用 Perl 写的针对 Graphite、datadog 等监控数据后端存储开发的前端网络应用，2011 年 Etsy 公司用 node.js 重构。用于接收(默认 UDP)、写入、读取和聚合时间序列数据，包括即时值和累积值等。
+Graphite 是用 Python 模仿 RRDtools 写的时间序列数据库套件。包括三个部分：
+carbon: 是一个Twisted守护进程，监听处理数据；
+whisper: 存储时间序列的数据库；
+webapp: 一个用 Django 框架实现的网页应用。
+Graphite 安装简介
+
+通过如下几步安装 Graphite：
+安装 cairo 和 pycairo 库
+# yum -y install cairo pycairo
+pip 安装
+# yum install python-devel python-pip
+# pip install django django-tagging carbon whisper graphite-web uwsgi
+配置 Graphite
+# cd /opt/graphite/webapp/graphite
+# cp local_settings.py.example local_settings.py
+# python manage.py syncdb
+修改 local_settings.py 中的 DATABASE 为设置的 db 信息。
+启动 cabon
+# cd /opt/graphite/conf/
+# cp carbon.conf.example carbon.conf
+# cp storage-schemas.conf.example storage-schemas.conf
+# cd /opt/graphite/
+# ./bin/carbon-cache.py start
+statsd 安装简介
+
+Graphite 地址设置
+# cd /opt/
+# git clone git://github.com/etsy/statsd.git
+# cd /opt/statsd
+# cp exampleConfig.js Config.js
+根据 Graphite 服务器地址，修改Config.js 中的配置如下：
+{
+  graphitePort: 2003,
+  graphiteHost: "10.10.10.124",
+  port: 8125,
+  backends: [ "./backends/graphite" ]
+}
+uwsgi 配置
+cd /opt/graphite/webapp/graphite
+cat > wsgi_graphite.xml <<EOF
+<uwsgi>
+  <socket>0.0.0.0:8630</socket>
+  <workers>2</workers>
+  <processes>2</processes>
+  <listen>100</listen>
+  <chdir>/opt/graphite/webapp/graphite</chdir>
+  <pythonpath>..</pythonpath>
+  <module>wsgi</module>
+  <pidfile>graphite.pid</pidfile>
+  <master>true</master>
+  <enable-threads>true</enable-threads>
+  <logdate>true</logdate>
+  <daemonize>/var/log/uwsgi_graphite.log</daemonize>
+</uwsgi>
+EOF
+cp /opt/graphite/conf/graphite.wsgi /opt/graphite/webapp/graphite/wsgi.py
+nginx 的 uwsgi 配置
+cat > /usr/local/nginx/conf/conf.d/graphite.conf <<EOF
+server {
+  listen 8081;
+  server_name graphite;
+
+  access_log /opt/graphite/storage/log/webapp/access.log ;
+  error_log /opt/graphite/storage/log/webapp/error.log ;
+
+  location / {
+    uwsgi_pass 0.0.0.0:8630;
+    include uwsgi_params;
+    proxy_connect_timeout 300;
+    proxy_send_timeout 300;
+    proxy_read_timeout 300;
+  }
+}
+EOF
+启动
+# uwsgi -x /opt/graphite/webapp/graphite/wsgi_graphite.xml
+# systemctl nginx reload
+数据测试
+echo "test.logstash.num:100|c" | nc -w 1 -u $IP $port
+如果安装配置是正常的，在graphite的左侧metrics->stats->test->logstash->num的表，statsd里面多了numStats等数据。
+配置示例
+
+output {
+    statsd {
+        host => "statsdserver.domain.com"
+        namespace => "logstash"
+        sender => "%{host}"
+        increment => ["httpd.response.%{status}"]
+    }
+}
+解释
+
+Graphite 以树状结构存储监控数据，所以 statsd 也是如此。所以发送给 statsd 的数据的 key 也一定得是 "first.second.tree.four" 这样的形式。而在 logstash-output-statsd 插件中，就会以三个配置参数来拼接成这种形式：
+    namespace.sender.metric
+其中 namespace 和 sender 都是直接设置的，而 metric 又分为好几个不同的参数可以分别设置。statsd 支持的 metric 类型如下：
+metric 类型
+
+increment 增量，一个计量周期内，某个数字接收了多少次，比如 nginx 的 status 状态码。
+示例语法：increment => ["nginx.status.%{status}"]
+decrement
+语法同 increment。
+count 对数字的计数，比如，每秒接收一个数字，一个计量周期内，所有数字的和，比如nginx 的 body_bytes_sent。
+示例语法：count => {"nginx.bytes" => "%{bytes}"}
+gauge
+语法同 count。
+set
+语法同 count。
+timing 时间范围内，某种数字的最大值，最小值，平均值，比如 nginx 的响应时间 request_time。
+语法同 count。+
+
+
+
+标准输出(Stdout)
+
+和之前 inputs/stdin 插件一样，outputs/stdout 插件也是最基础和简单的输出插件。同样在这里简单介绍一下，作为输出插件的一个共性了解。
+配置示例
+
+output {
+    stdout {
+        codec => rubydebug
+        workers => 2
+    }
+}
+解释
+
+输出插件统一具有一个参数是 workers。Logstash 为输出做了多线程的准备。
+其次是 codec 设置。codec 的作用在之前已经讲过。可能除了 codecs/multiline ，其他 codec 插件本身并没有太多的设置项。所以一般省略掉后面的配置区段。换句话说。上面配置示例的完全写法应该是：
+output {
+    stdout {
+        codec => rubydebug {
+        }
+        workers => 2
+    }
+}
+单就 outputs/stdout 插件来说，其最重要和常见的用途就是调试。所以在不太有效的时候，加上命令行参数 -vv 运行，查看更多详细调试信息。+
+
+
+
+发送网络数据(TCP)
+
+虽然之前我们已经提到过不建议直接使用 LogStash::Inputs::TCP 和 LogStash::Outputs::TCP 做转发工作，不过在实际交流中，发现确实有不少朋友觉得这种简单配置足够使用，因而不愿意多加一层消息队列的。所以，还是把 Logstash 如何直接发送 TCP 数据也稍微提点一下。
+配置示例
+
+output {
+    tcp {
+        host  => "192.168.0.2"
+        port  => 8888
+        codec => json_lines
+    }
+}
+配置说明
+
+在收集端采用 tcp 方式发送给远端的 tcp 端口。这里需要注意的是，默认的 codec 选项是 json。而远端的 LogStash::Inputs::TCP 的默认 codec 选项却是 line ！所以不指定各自的 codec ，对接肯定是失败的。
+另外，由于IO BUFFER 的原因，即使是两端共同约定为 json 依然无法正常运行，接收端会认为一行数据没结束，一直等待直至自己 OutOfMemory ！
+所以，正确的做法是，发送端指定 codec 为 json_lines ，这样每条数据后面会加上一个回车，接收端指定 codec 为 json_lines 或者 json 均可，这样才能正常处理。包括在收集端已经切割好的字段，也可以直接带入收集端使用了。+
+
+
+
+
+HDFS
+
+https://github.com/dstore-dbap/logstash-webhdfs
+This plugin based on WebHDFS api of Hadoop, it just POST data to WebHDFS port. So, it's a native Ruby code.
+output {
+    hadoop_webhdfs {
+        workers => 2
+        server => "your.nameno.de:14000"
+        user => "flume"
+        path => "/user/flume/logstash/dt=%{+Y}-%{+M}-%{+d}/logstash-%{+H}.log"
+        flush_size => 500
+        compress => "snappy"
+        idle_flush_time => 10
+        retry_interval => 0.5
+    }
+}
+https://github.com/avishai-ish-shalom/logstash-hdfs
+This plugin based on HDFS api of Hadoop, it import java classes like org.apache.hadoop.fs.FileSystem etc.
+Configuration
+
+output {
+    hdfs {
+        path => "/path/to/output_file.log"
+        enable_append => true
+    }
+}
+Howto run
+
+CLASSPATH=$(find /path/to/hadoop -name '*.jar' | tr '\n' ':'):/etc/hadoop/conf:/path/to/logstash-1.1.7-monolithic.jar java logstash.runner agent -f conf/hdfs-output.conf -p /path/to/cloned/logstash-hdfs
+
+
+
+
+
+
+场景示例
+
+前面虽然介绍了几十个常用的 Logstash 插件的常见配置项。但是过多的选择下，如何组合使用这些插件，依然是一部分用户的幸福难题。本节，列举一些最常见的日志场景，演示一下针对性的组件搭配。希望能给读者带来一点启发。+
+
+
+
+
+
+
+
+
+Nginx 访问日志
+
+grok
+
+Logstash 默认自带了 apache 标准日志的 grok 正则:
+COMMONAPACHELOG %{IPORHOST:clientip} %{USER:ident} %{NOTSPACE:auth} \[%{HTTPDATE:timestamp}\] "(?:%{WORD:verb} %{NOTSPACE:request}(?: HTTP/%{NUMBER:httpversion})?|%{DATA:rawrequest})" %{NUMBER:response} (?:%{NUMBER:bytes}|-)
+COMBINEDAPACHELOG %{COMMONAPACHELOG} %{QS:referrer} %{QS:agent}
+对于 nginx 标准日志格式，可以发现只是最后多了一个 $http_x_forwarded_for 变量。所以 nginx 标准日志的 grok 正则定义是：
+MAINNGINXLOG %{COMBINEDAPACHELOG} %{QS:x_forwarded_for}
+自定义的日志格式，可以照此修改。
+split
+
+nginx 日志因为部分变量中内含空格，所以很多时候只能使用 %{QS} 正则来做分割，性能和细度都不太好。如果能自定义一个比较少见的字符作为分隔符，那么处理起来就简单多了。假设定义的日志格式如下：
+log_format main "$http_x_forwarded_for | $time_local | $request | $status | $body_bytes_sent | "
+                "$request_body | $content_length | $http_referer | $http_user_agent | $nuid | "
+                "$http_cookie | $remote_addr | $hostname | $upstream_addr | $upstream_response_time | $request_time";
+实际日志如下：
+117.136.9.248 | 08/Apr/2015:16:00:01 +0800 | POST /notice/newmessage?sign=cba4f614e05db285850cadc696fcdad0&token=JAGQ92Mjs3--gik_b_DsPIQHcyMKYGpD&did=4b749736ac70f12df700b18cd6d051d5&osn=android&osv=4.0.4&appv=3.0.1&net=460-02-2g&longitude=120.393006&latitude=36.178329&ch=360&lp=1&ver=1&ts=1428479998151&im=869736012353958&sw=0&sh=0&la=zh-CN&lm=weixin&dt=vivoS11t HTTP/1.1 | 200 | 132 | abcd-sign-v1://dd03c57f8cb6fcef919ab5df66f2903f:d51asq5yslwnyz5t/{\x22type\x22:4,\x22uid\x22:7567306} | 89 | - | abcd/3.0.1, Android/4.0.4, vivo S11t | nuid=0C0A0A0A01E02455EA7CF47E02FD072C1428480001.157 | - | 10.10.10.13 | bnx02.abcdprivate.com | 10.10.10.22:9999 | 0.022 | 0.022 59.50.44.53 | 08/Apr/2015:16:00:01 +0800 | POST /feed/pubList?appv=3.0.3&did=89da72550de488328e2aba5d97850e9f&dt=iPhone6%2C2&im=B48C21F3-487E-4071-9742-DC6D61710888&la=cn&latitude=0.000000&lm=weixin&longitude=0.000000&lp=-1.000000&net=0-0-wifi&osn=iOS&osv=8.1.3&sh=568.000000&sw=320.000000&token=7NobA7asg3Jb6n9o4ETdPXyNNiHwMs4J&ts=1428480001275 HTTP/1.1 | 200 | 983 | abcd-sign-v1://b398870a0b25b29aae65cd553addc43d:72214ee85d7cca22/{\x22nextkey\x22:\x22\x22,\x22uid\x22:\x2213062545\x22,\x22token\x22:\x227NobA7asg3Jb6n9o4ETdPXyNNiHwMs4J\x22} | 139 | - | Shopping/3.0.3 (iPhone; iOS 8.1.3; Scale/2.00) | nuid=0C0A0A0A81DF2455017D548502E48E2E1428480001.154 | nuid=CgoKDFUk34GFVH0BLo7kAg== | 10.10.10.11 | bnx02.abcdprivate.com | 10.10.10.35:9999 | 0.025 | 0.026
+然后还可以针对 request 做更细致的切分。比如 URL 参数部分。很明显，URL 参数中的字段，顺序是乱的，第一行，问号之后的第一个字段是 sign，第二行问号之后的第一个字段是 appv，所以需要将字段进行切分，取出每个字段对应的值。官方自带 grok 满足不了要求。最终采用的 logstash 配置如下：
+filter {
+    ruby {
+        init => "@kname = ['http_x_forwarded_for','time_local','request','status','body_bytes_sent','request_body','content_length','http_referer','http_user_agent','nuid','http_cookie','remote_addr','hostname','upstream_addr','upstream_response_time','request_time']"
+        code => "
+            new_event = LogStash::Event.new(Hash[@kname.zip(event.get('message').split('|'))])
+            new_event.remove('@timestamp')
+            event.append(new_event)""
+        "
+    }
+    if [request] {
+        ruby {
+            init => "@kname = ['method','uri','verb']"
+            code => "
+                new_event = LogStash::Event.new(Hash[@kname.zip(event.get('request').split(' '))])
+                new_event.remove('@timestamp')
+                event.append(new_event)""
+            "
+        }
+        if [uri] {
+            ruby {
+                init => "@kname = ['url_path','url_args']"
+                code => "
+                    new_event = LogStash::Event.new(Hash[@kname.zip(event.get('uri').split('?'))])
+                    new_event.remove('@timestamp')
+                    event.append(new_event)""
+                "
+            }
+            kv {
+                prefix => "url_"
+                source => "url_args"
+                field_split => "& "
+                remove_field => [ "url_args","uri","request" ]
+            }
+        }
+    }
+    mutate {
+        convert => [
+            "body_bytes_sent" , "integer",
+            "content_length", "integer",
+            "upstream_response_time", "float",
+            "request_time", "float"
+        ]
+    }
+    date {
+        match => [ "time_local", "dd/MMM/yyyy:hh:mm:ss Z" ]
+        locale => "en"
+    }
+}
+最终结果：
+{
+                   "message" => "1.43.3.188 | 08/Apr/2015:16:00:01 +0800 | POST /search/suggest?appv=3.0.3&did=dfd5629d705d400795f698055806f01d&dt=iPhone7%2C2&im=AC926907-27AA-4A10-9916-C5DC75F29399&la=cn&latitude=-33.903867&lm=sina&longitude=151.208137&lp=-1.000000&net=0-0-wifi&osn=iOS&osv=8.1.3&sh=667.000000&sw=375.000000&token=_ovaPz6Ue68ybBuhXustPbG-xf1WbsPO&ts=1428480001567 HTTP/1.1 | 200 | 353 | abcd-sign-v1://a24b478486d3bb92ed89a901541b60a5:b23e9d2c14fe6755/{\\x22key\\x22:\\x22last\\x22,\\x22offset\\x22:\\x220\\x22,\\x22token\\x22:\\x22_ovaPz6Ue68ybBuhXustPbG-xf1WbsPO\\x22,\\x22limit\\x22:\\x2220\\x22} | 148 | - | abcdShopping/3.0.3 (iPhone; iOS 8.1.3; Scale/2.00) | nuid=0B0A0A0A9A64AF54F97634640230944E1428480001.113 | nuid=CgoKC1SvZJpkNHb5TpQwAg== | 10.10.10.11 | bnx02.abcdprivate.com | 10.10.10.26:9999 | 0.070 | 0.071",
+                  "@version" => "1",
+                "@timestamp" => "2015-04-08T08:00:01.000Z",
+                      "type" => "nginxapiaccess",
+                      "host" => "blog05.abcdprivate.com",
+                      "path" => "/home/nginx/logs/api.access.log",
+      "http_x_forwarded_for" => "1.43.3.188",
+                "time_local" => " 08/Apr/2015:16:00:01 +0800",
+                    "status" => "200",
+           "body_bytes_sent" => 353,
+              "request_body" => "abcd-sign-v1://a24b478486d3bb92ed89a901541b60a5:b23e9d2c14fe6755/{\\x22key\\x22:\\x22last\\x22,\\x22offset\\x22:\\x220\\x22,\\x22token\\x22:\\x22_ovaPz6Ue68ybBuhXustPbG-xf1WbsPO\\x22,\\x22limit\\x22:\\x2220\\x22}",
+            "content_length" => 148,
+              "http_referer" => "-",
+           "http_user_agent" => "abcdShopping/3.0.3 (iPhone; iOS 8.1.3; Scale/2.00)",
+                      "nuid" => "nuid=0B0A0A0A9A64AF54F97634640230944E1428480001.113",
+               "http_cookie" => "nuid=CgoKC1SvZJpkNHb5TpQwAg==",
+               "remote_addr" => "10.10.10.11",
+                  "hostname" => "bnx02.abcdprivate.com",
+             "upstream_addr" => "10.10.10.26:9999",
+    "upstream_response_time" => 0.070,
+              "request_time" => 0.071,
+                    "method" => "POST",
+                      "verb" => "HTTP/1.1",
+                  "url_path" => "/search/suggest",
+                  "url_appv" => "3.0.3",
+                   "url_did" => "dfd5629d705d400795f698055806f01d",
+                    "url_dt" => "iPhone7%2C2",
+                    "url_im" => "AC926907-27AA-4A10-9916-C5DC75F29399",
+                    "url_la" => "cn",
+              "url_latitude" => "-33.903867",
+                    "url_lm" => "sina",
+             "url_longitude" => "151.208137",
+                    "url_lp" => "-1.000000",
+                   "url_net" => "0-0-wifi",
+                   "url_osn" => "iOS",
+                   "url_osv" => "8.1.3",
+                    "url_sh" => "667.000000",
+                    "url_sw" => "375.000000",
+                 "url_token" => "_ovaPz6Ue68ybBuhXustPbG-xf1WbsPO",
+                    "url_ts" => "1428480001567"
+}
+如果 url 参数过多，可以不使用 kv 切割，或者预先定义成 nested object 后，改成数组形式：
+        if [uri] {
+            ruby {
+                init => "@kname = ['url_path','url_args']"
+                code => "
+                    new_event = LogStash::Event.new(Hash[@kname.zip(event.get('request').split('?'))])
+                    new_event.remove('@timestamp')
+                    event.append(new_event)""
+                "
+            }
+            if [url_args] {
+                ruby {
+                    init => "@kname = ['key','value']"
+                    code => "event.set('nested_args', event.get('url_args').split('&').collect {|i| Hash[@kname.zip(i.split('='))]})"
+                    remove_field => [ "url_args","uri","request" ]
+                }
+            }
+        }
+采用 nested object 的优化原理和 nested object 的使用方式，请阅读稍后 Elasticsearch 调优章节。
+json format
+
+自定义分隔符虽好，但是配置写起来毕竟复杂很多。其实对 logstash 来说，nginx 日志还有另一种更简便的处理方式。就是自定义日志格式时，通过手工拼写，直接输出成 JSON 格式：
+log_format json '{"@timestamp":"$time_iso8601",'
+                 '"host":"$server_addr",'
+                 '"clientip":"$remote_addr",'
+                 '"size":$body_bytes_sent,'
+                 '"responsetime":$request_time,'
+                 '"upstreamtime":"$upstream_response_time",'
+                 '"upstreamhost":"$upstream_addr",'
+                 '"http_host":"$host",'
+                 '"url":"$uri",'
+                 '"xff":"$http_x_forwarded_for",'
+                 '"referer":"$http_referer",'
+                 '"agent":"$http_user_agent",'
+                 '"status":"$status"}';
+然后采用下面的 logstash 配置即可：
+input {
+    file {
+        path => "/var/log/nginx/access.log"
+        codec => json
+    }
+}
+filter {
+    mutate {
+        split => [ "upstreamtime", "," ]
+    }
+    mutate {
+        convert => [ "upstreamtime", "float" ]
+    }
+}
+这里采用多个 mutate 插件，因为 upstreamtime 可能有多个数值，所以先切割成数组以后，再分别转换成浮点型数值。而在 mutate 中，convert 函数执行优先级高于 split 函数，所以只能分开两步写。mutate 内各函数优先级顺序，之前插件介绍章节有详细说明，读者可以返回去加强阅读。
+syslog
+
+Nginx 从 1.7 版开始，加入了 syslog 支持。Tengine 则更早。这样我们可以通过 syslog 直接发送日志出来。Nginx 上的配置如下：
+access_log syslog:server=unix:/data0/rsyslog/nginx.sock locallog;
+或者直接发送给远程 logstash 机器：
+access_log syslog:server=192.168.0.2:5140,facility=local6,tag=nginx-access,severity=info logstashlog;
+默认情况下，Nginx 将使用 local7.info 等级，nginx 为标签，发送数据。注意，采用 syslog 发送日志的时候，无法配置 buffer=16k 选项。+
+
+
+
+Nginx 错误日志
+
+Nginx 错误日志是运维人员最常见但又极其容易忽略的日志类型之一。Nginx 错误日志即没有统一明确的分隔符，也没有特别方便的正则模式，但通过 logstash 不同插件的组合，还是可以轻松做到数据处理。
+值得注意的是，Nginx 错误日志中，有一类数据是接收过大请求体时的报错，默认信息会把请求体的具体字节数记录下来。每次请求的字节数基本都是在变化的，这意味着常用的 topN 等聚合函数对该字段都没有明显效果。所以，对此需要做一下特殊处理。
+最后形成的 logstash 配置如下所示：
+filter {
+    grok {
+        match => { "message" => "(?<datetime>\d\d\d\d/\d\d/\d\d \d\d:\d\d:\d\d) \[(?<errtype>\w+)\] \S+: \*\d+ (?<errmsg>[^,]+), (?<errinfo>.*)$" }
+    }
+    mutate {
+        rename => [ "host", "fromhost" ]
+        gsub => [ "errmsg", "too large body: \d+ bytes", "too large body" ]
+    }
+    if [errinfo]
+    {
+        ruby {
+            code => "
+                new_event = LogStash::Event.new(Hash[event.get('errinfo').split(', ').map{|l| l.split(': ')}])
+                new_event.remove('@timestamp')
+                event.append(new_event)""
+            "
+        }
+    }
+    grok {
+        match => { "request" => '"%{WORD:verb} %{URIPATH:urlpath}(?:\?%{NGX_URIPARAM:urlparam})?(?: HTTP/%{NUMBER:httpversion})"' }
+        patterns_dir => "/etc/logstash/patterns"
+        remove_field => [ "message", "errinfo", "request" ]
+    }
+}
+经过这段 logstash 配置的 Nginx 错误日志生成的事件如下所示：
+{
+    "@version": "1",
+    "@timestamp": "2015-07-02T01:26:40.000Z",
+    "type": "nginx-error",
+    "errtype": "error",
+    "errmsg": "client intended to send too large body",
+    "fromhost": "web033.mweibo.yf.sinanode.com",
+    "client": "36.16.7.17",
+    "server": "api.v5.weibo.cn",
+    "host": "\"api.weibo.cn\"",
+    "verb": "POST",
+    "urlpath": "/2/client/addlog_batch",
+    "urlparam": "gsid=_2A254UNaSDeTxGeRI7FMX9CrEyj2IHXVZRG1arDV6PUJbrdANLROskWp9bXakjUZM5792FW9A5S9EU4jxqQ..&wm=3333_2001&i=0c6f156&b=1&from=1053093010&c=iphone&v_p=21&skin=default&v_f=1&s=8f14e573&lang=zh_CN&ua=iPhone7,1__weibo__5.3.0__iphone__os8.3",
+    "httpversion": "1.1"
+}
+
+
+
+postfix 日志
+
+postfix 是 Linux 平台上最常用的邮件服务器软件。邮件服务的运维复杂度一向较高，在此提供一个针对 postfix 日志的解析处理方案。方案出自：https://github.com/whyscream/postfix-grok-patterns。
+因为 postfix 默认通过 syslog 方式输出日志，所以可以选择通过 rsyslog 直接转发给 logstash，也可以由 logstash 读取 rsyslog 记录的文件。下列配置中省略了对 syslog 协议解析的部分。
+filter {
+    # grok log lines by program name (listed alpabetically)
+    if [program] =~ /^postfix.*\/anvil$/ {
+        grok {
+            patterns_dir   => "/etc/logstash/patterns.d"
+            match          => [ "message", "%{POSTFIX_ANVIL}" ]
+            tag_on_failure => [ "_grok_postfix_anvil_nomatch" ]
+            add_tag        => [ "_grok_postfix_success" ]
+        }
+    } else if [program] =~ /^postfix.*\/bounce$/ {
+        grok {
+            patterns_dir   => "/etc/logstash/patterns.d"
+            match          => [ "message", "%{POSTFIX_BOUNCE}" ]
+            tag_on_failure => [ "_grok_postfix_bounce_nomatch" ]
+            add_tag        => [ "_grok_postfix_success" ]
+        }
+    } else if [program] =~ /^postfix.*\/cleanup$/ {
+        grok {
+            patterns_dir   => "/etc/logstash/patterns.d"
+            match          => [ "message", "%{POSTFIX_CLEANUP}" ]
+            tag_on_failure => [ "_grok_postfix_cleanup_nomatch" ]
+            add_tag        => [ "_grok_postfix_success" ]
+        }
+    } else if [program] =~ /^postfix.*\/dnsblog$/ {
+        grok {
+            patterns_dir   => "/etc/logstash/patterns.d"
+            match          => [ "message", "%{POSTFIX_DNSBLOG}" ]
+            tag_on_failure => [ "_grok_postfix_dnsblog_nomatch" ]
+            add_tag        => [ "_grok_postfix_success" ]
+        }
+    } else if [program] =~ /^postfix.*\/local$/ {
+        grok {
+            patterns_dir   => "/etc/logstash/patterns.d"
+            match          => [ "message", "%{POSTFIX_LOCAL}" ]
+            tag_on_failure => [ "_grok_postfix_local_nomatch" ]
+            add_tag        => [ "_grok_postfix_success" ]
+        }
+    } else if [program] =~ /^postfix.*\/master$/ {
+        grok {
+            patterns_dir   => "/etc/logstash/patterns.d"
+            match          => [ "message", "%{POSTFIX_MASTER}" ]
+            tag_on_failure => [ "_grok_postfix_master_nomatch" ]
+            add_tag        => [ "_grok_postfix_success" ]
+        }
+    } else if [program] =~ /^postfix.*\/pickup$/ {
+        grok {
+            patterns_dir   => "/etc/logstash/patterns.d"
+            match          => [ "message", "%{POSTFIX_PICKUP}" ]
+            tag_on_failure => [ "_grok_postfix_pickup_nomatch" ]
+            add_tag        => [ "_grok_postfix_success" ]
+        }
+    } else if [program] =~ /^postfix.*\/pipe$/ {
+        grok {
+            patterns_dir   => "/etc/logstash/patterns.d"
+            match          => [ "message", "%{POSTFIX_PIPE}" ]
+            tag_on_failure => [ "_grok_postfix_pipe_nomatch" ]
+            add_tag        => [ "_grok_postfix_success" ]
+        }
+    } else if [program] =~ /^postfix.*\/postdrop$/ {
+        grok {
+            patterns_dir   => "/etc/logstash/patterns.d"
+            match          => [ "message", "%{POSTFIX_POSTDROP}" ]
+            tag_on_failure => [ "_grok_postfix_postdrop_nomatch" ]
+            add_tag        => [ "_grok_postfix_success" ]
+        }
+    } else if [program] =~ /^postfix.*\/postscreen$/ {
+        grok {
+            patterns_dir   => "/etc/logstash/patterns.d"
+            match          => [ "message", "%{POSTFIX_POSTSCREEN}" ]
+            tag_on_failure => [ "_grok_postfix_postscreen_nomatch" ]
+            add_tag        => [ "_grok_postfix_success" ]
+        }
+    } else if [program] =~ /^postfix.*\/qmgr$/ {
+        grok {
+            patterns_dir   => "/etc/logstash/patterns.d"
+            match          => [ "message", "%{POSTFIX_QMGR}" ]
+            tag_on_failure => [ "_grok_postfix_qmgr_nomatch" ]
+            add_tag        => [ "_grok_postfix_success" ]
+        }
+    } else if [program] =~ /^postfix.*\/scache$/ {
+        grok {
+            patterns_dir   => "/etc/logstash/patterns.d"
+            match          => [ "message", "%{POSTFIX_SCACHE}" ]
+            tag_on_failure => [ "_grok_postfix_scache_nomatch" ]
+            add_tag        => [ "_grok_postfix_success" ]
+        }
+    } else if [program] =~ /^postfix.*\/sendmail$/ {
+        grok {
+            patterns_dir   => "/etc/logstash/patterns.d"
+            match          => [ "message", "%{POSTFIX_SENDMAIL}" ]
+            tag_on_failure => [ "_grok_postfix_sendmail_nomatch" ]
+            add_tag        => [ "_grok_postfix_success" ]
+        }
+    } else if [program] =~ /^postfix.*\/smtp$/ {
+        grok {
+            patterns_dir   => "/etc/logstash/patterns.d"
+            match          => [ "message", "%{POSTFIX_SMTP}" ]
+            tag_on_failure => [ "_grok_postfix_smtp_nomatch" ]
+            add_tag        => [ "_grok_postfix_success" ]
+        }
+    } else if [program] =~ /^postfix.*\/lmtp$/ {
+        grok {
+            patterns_dir   => "/etc/logstash/patterns.d"
+            match          => [ "message", "%{POSTFIX_LMTP}" ]
+            tag_on_failure => [ "_grok_postfix_lmtp_nomatch" ]
+            add_tag        => [ "_grok_postfix_success" ]
+        }
+    } else if [program] =~ /^postfix.*\/smtpd$/ {
+        grok {
+            patterns_dir   => "/etc/logstash/patterns.d"
+            match          => [ "message", "%{POSTFIX_SMTPD}" ]
+            tag_on_failure => [ "_grok_postfix_smtpd_nomatch" ]
+            add_tag        => [ "_grok_postfix_success" ]
+        }
+    } else if [program] =~ /^postfix.*\/tlsmgr$/ {
+        grok {
+            patterns_dir   => "/etc/logstash/patterns.d"
+            match          => [ "message", "%{POSTFIX_TLSMGR}" ]
+            tag_on_failure => [ "_grok_postfix_tlsmgr_nomatch" ]
+            add_tag        => [ "_grok_postfix_success" ]
+        }
+    } else if [program] =~ /^postfix.*\/tlsproxy$/ {
+        grok {
+            patterns_dir   => "/etc/logstash/patterns.d"
+            match          => [ "message", "%{POSTFIX_TLSPROXY}" ]
+            tag_on_failure => [ "_grok_postfix_tlsproxy_nomatch" ]
+            add_tag        => [ "_grok_postfix_success" ]
+        }
+    } else if [program] =~ /^postfix.*\/trivial-rewrite$/ {
+        grok {
+            patterns_dir   => "/etc/logstash/patterns.d"
+            match          => [ "message", "%{POSTFIX_TRIVIAL_REWRITE}" ]
+            tag_on_failure => [ "_grok_postfix_trivial_rewrite_nomatch" ]
+            add_tag        => [ "_grok_postfix_success" ]
+        }
+    } else if [program] =~ /^postfix.*\/discard$/ {
+        grok {
+            patterns_dir   => "/etc/logstash/patterns.d"
+            match          => [ "message", "%{POSTFIX_DISCARD}" ]
+            tag_on_failure => [ "_grok_postfix_discard_nomatch" ]
+            add_tag        => [ "_grok_postfix_success" ]
+        }
+    }
+
+    # process key-value data is it exists
+    if [postfix_keyvalue_data] {
+        kv {
+            source       => "postfix_keyvalue_data"
+            trim         => "<>,"
+            prefix       => "postfix_"
+            remove_field => [ "postfix_keyvalue_data" ]
+        }
+
+        # some post processing of key-value data
+        if [postfix_client] {
+            grok {
+                patterns_dir   => "/etc/logstash/patterns.d"
+                match          => ["postfix_client", "%{POSTFIX_CLIENT_INFO}"]
+                tag_on_failure => [ "_grok_kv_postfix_client_nomatch" ]
+                remove_field   => [ "postfix_client" ]
+            }
+        }
+        if [postfix_relay] {
+            grok {
+                patterns_dir   => "/etc/logstash/patterns.d"
+                match          => ["postfix_relay", "%{POSTFIX_RELAY_INFO}"]
+                tag_on_failure => [ "_grok_kv_postfix_relay_nomatch" ]
+                remove_field   => [ "postfix_relay" ]
+            }
+        }
+        if [postfix_delays] {
+            grok {
+                patterns_dir   => "/etc/logstash/patterns.d"
+                match          => ["postfix_delays", "%{POSTFIX_DELAYS}"]
+                tag_on_failure => [ "_grok_kv_postfix_delays_nomatch" ]
+                remove_field   => [ "postfix_delays" ]
+            }
+        }
+    }
+
+    # Do some data type conversions
+    mutate {
+        convert => [
+            # list of integer fields
+            "postfix_anvil_cache_size", "integer",
+            "postfix_anvil_conn_count", "integer",
+            "postfix_anvil_conn_rate", "integer",
+            "postfix_client_port", "integer",
+            "postfix_nrcpt", "integer",
+            "postfix_postscreen_cache_dropped", "integer",
+            "postfix_postscreen_cache_retained", "integer",
+            "postfix_postscreen_dnsbl_rank", "integer",
+            "postfix_relay_port", "integer",
+            "postfix_server_port", "integer",
+            "postfix_size", "integer",
+            "postfix_status_code", "integer",
+            "postfix_termination_signal", "integer",
+            "postfix_uid", "integer",
+
+            # list of float fields
+            "postfix_delay", "float",
+            "postfix_delay_before_qmgr", "float",
+            "postfix_delay_conn_setup", "float",
+            "postfix_delay_in_qmgr", "float",
+            "postfix_delay_transmission", "float",
+            "postfix_postscreen_violation_time", "float"
+        ]
+    }
+}
+配置中使用了一系列自定义 grok 正则，全部内容如下所示。保存成 /etc/logstash/patterns.d/ 下一个文本文件即可。
+# common postfix patterns
+POSTFIX_QUEUEID ([0-9A-F]{6,}|[0-9a-zA-Z]{15,}|NOQUEUE)
+POSTFIX_CLIENT_INFO %{HOST:postfix_client_hostname}?\[%{IP:postfix_client_ip}\](:%{INT:postfix_client_port})?
+POSTFIX_RELAY_INFO %{HOST:postfix_relay_hostname}?\[(%{IP:postfix_relay_ip}|%{DATA:postfix_relay_service})\](:%{INT:postfix_relay_port})?|%{WORD:postfix_relay_service}
+POSTFIX_SMTP_STAGE (CONNECT|HELO|EHLO|STARTTLS|AUTH|MAIL|RCPT|DATA|RSET|UNKNOWN|END-OF-MESSAGE|VRFY|\.)
+POSTFIX_ACTION (reject|defer|accept|header-redirect)
+POSTFIX_STATUS_CODE \d{3}
+POSTFIX_STATUS_CODE_ENHANCED \d\.\d\.\d
+POSTFIX_DNSBL_MESSAGE Service unavailable; .* \[%{GREEDYDATA:postfix_status_data}\] %{GREEDYDATA:postfix_status_message};
+POSTFIX_PS_ACCESS_ACTION (DISCONNECT|BLACKLISTED|WHITELISTED|WHITELIST VETO|PASS NEW|PASS OLD)
+POSTFIX_PS_VIOLATION (BARE NEWLINE|COMMAND (TIME|COUNT|LENGTH) LIMIT|COMMAND PIPELINING|DNSBL|HANGUP|NON-SMTP COMMAND|PREGREET)
+POSTFIX_TIME_UNIT %{NUMBER}[smhd]
+POSTFIX_KEYVALUE %{POSTFIX_QUEUEID:postfix_queueid}: %{GREEDYDATA:postfix_keyvalue_data}
+POSTFIX_WARNING (warning|fatal): %{GREEDYDATA:postfix_warning}
+POSTFIX_TLSCONN (Anonymous|Trusted|Untrusted|Verified) TLS connection established (to %{POSTFIX_RELAY_INFO}|from %{POSTFIX_CLIENT_INFO}): %{DATA:postfix_tls_version} with cipher %{DATA:postfix_tls_cipher} \(%{DATA:postfix_tls_cipher_size} bits\)
+POSTFIX_DELAYS %{NUMBER:postfix_delay_before_qmgr}/%{NUMBER:postfix_delay_in_qmgr}/%{NUMBER:postfix_delay_conn_setup}/%{NUMBER:postfix_delay_transmission}
+POSTFIX_LOSTCONN (lost connection|timeout|Connection timed out)
+POSTFIX_PROXY_MESSAGE (%{POSTFIX_STATUS_CODE:postfix_proxy_status_code} )?(%{POSTFIX_STATUS_CODE_ENHANCED:postfix_proxy_status_code_enhanced})?.*
+
+# helper patterns
+GREEDYDATA_NO_COLON [^:]*
+
+# smtpd patterns
+POSTFIX_SMTPD_CONNECT connect from %{POSTFIX_CLIENT_INFO}
+POSTFIX_SMTPD_DISCONNECT disconnect from %{POSTFIX_CLIENT_INFO}
+POSTFIX_SMTPD_LOSTCONN (%{POSTFIX_LOSTCONN:postfix_smtpd_lostconn_data} after %{POSTFIX_SMTP_STAGE:postfix_smtp_stage}( \(%{INT} bytes\))? from %{POSTFIX_CLIENT_INFO}|%{GREEDYDATA:postfix_action} from %{POSTFIX_CLIENT_INFO}: %{POSTFIX_LOSTCONN:postfix_smtpd_lostconn_data})
+POSTFIX_SMTPD_NOQUEUE NOQUEUE: %{POSTFIX_ACTION:postfix_action}: %{POSTFIX_SMTP_STAGE:postfix_smtp_stage} from %{POSTFIX_CLIENT_INFO}: %{POSTFIX_STATUS_CODE:postfix_status_code} %{POSTFIX_STATUS_CODE_ENHANCED:postfix_status_code_enhanced}( <%{DATA:postfix_status_data}>:)? (%{POSTFIX_DNSBL_MESSAGE}|%{GREEDYDATA:postfix_status_message};) %{GREEDYDATA:postfix_keyvalue_data}
+POSTFIX_SMTPD_PIPELINING improper command pipelining after %{POSTFIX_SMTP_STAGE:postfix_smtp_stage} from %{POSTFIX_CLIENT_INFO}:
+POSTFIX_SMTPD_PROXY proxy-%{POSTFIX_ACTION:postfix_proxy_result}: (%{POSTFIX_SMTP_STAGE:postfix_proxy_smtp_stage}): %{POSTFIX_PROXY_MESSAGE:postfix_proxy_message}; %{GREEDYDATA:postfix_keyvalue_data}
+
+# cleanup patterns
+POSTFIX_CLEANUP_MILTER %{POSTFIX_QUEUEID:postfix_queueid}: milter-%{POSTFIX_ACTION:postfix_milter_result}: %{GREEDYDATA:postfix_milter_message}; %{GREEDYDATA_NO_COLON:postfix_keyvalue_data}(: %{GREEDYDATA:postfix_milter_data})?
+
+# qmgr patterns
+POSTFIX_QMGR_REMOVED %{POSTFIX_QUEUEID:postfix_queueid}: removed
+POSTFIX_QMGR_ACTIVE %{POSTFIX_QUEUEID:postfix_queueid}: %{GREEDYDATA:postfix_keyvalue_data} \(queue active\)
+
+# pipe patterns
+POSTFIX_PIPE_DELIVERED %{POSTFIX_QUEUEID:postfix_queueid}: %{GREEDYDATA:postfix_keyvalue_data} \(delivered via %{WORD:postfix_pipe_service} service\)
+POSTFIX_PIPE_FORWARD %{POSTFIX_QUEUEID:postfix_queueid}: %{GREEDYDATA:postfix_keyvalue_data} \(mail forwarding loop for %{GREEDYDATA:postfix_to}\)
+
+# postscreen patterns
+POSTFIX_PS_CONNECT CONNECT from %{POSTFIX_CLIENT_INFO} to \[%{IP:postfix_server_ip}\]:%{INT:postfix_server_port}
+POSTFIX_PS_ACCESS %{POSTFIX_PS_ACCESS_ACTION:postfix_postscreen_access} %{POSTFIX_CLIENT_INFO}
+POSTFIX_PS_NOQUEUE %{POSTFIX_SMTPD_NOQUEUE}
+POSTFIX_PS_TOOBUSY NOQUEUE: reject: CONNECT from %{POSTFIX_CLIENT_INFO}: %{GREEDYDATA:postfix_postscreen_toobusy_data}
+POSTFIX_PS_DNSBL %{POSTFIX_PS_VIOLATION:postfix_postscreen_violation} rank %{INT:postfix_postscreen_dnsbl_rank} for %{POSTFIX_CLIENT_INFO}
+POSTFIX_PS_CACHE cache %{DATA} full cleanup: retained=%{NUMBER:postfix_postscreen_cache_retained} dropped=%{NUMBER:postfix_postscreen_cache_dropped} entries
+POSTFIX_PS_VIOLATIONS %{POSTFIX_PS_VIOLATION:postfix_postscreen_violation}( %{INT})?( after %{NUMBER:postfix_postscreen_violation_time})? from %{POSTFIX_CLIENT_INFO}( after %{POSTFIX_SMTP_STAGE:postfix_smtp_stage})?
+
+# dnsblog patterns
+POSTFIX_DNSBLOG_LISTING addr %{IP:postfix_client_ip} listed by domain %{HOST:postfix_dnsbl_domain} as %{IP:postfix_dnsbl_result}
+
+# tlsproxy patterns
+POSTFIX_TLSPROXY_CONN (DIS)?CONNECT( from)? %{POSTFIX_CLIENT_INFO}
+
+# anvil patterns
+POSTFIX_ANVIL_CONN_RATE statistics: max connection rate %{NUMBER:postfix_anvil_conn_rate}/%{POSTFIX_TIME_UNIT:postfix_anvil_conn_period} for \(%{DATA:postfix_service}:%{IP:postfix_client_ip}\) at %{SYSLOGTIMESTAMP:postfix_anvil_timestamp}
+POSTFIX_ANVIL_CONN_CACHE statistics: max cache size %{NUMBER:postfix_anvil_cache_size} at %{SYSLOGTIMESTAMP:postfix_anvil_timestamp}
+POSTFIX_ANVIL_CONN_COUNT statistics: max connection count %{NUMBER:postfix_anvil_conn_count} for \(%{DATA:postfix_service}:%{IP:postfix_client_ip}\) at %{SYSLOGTIMESTAMP:postfix_anvil_timestamp}
+
+# smtp patterns
+POSTFIX_SMTP_DELIVERY %{POSTFIX_KEYVALUE} status=%{WORD:postfix_status}( \(%{GREEDYDATA:postfix_smtp_response}\))?
+POSTFIX_SMTP_CONNERR connect to %{POSTFIX_RELAY_INFO}: (Connection timed out|No route to host|Connection refused)
+POSTFIX_SMTP_LOSTCONN %{POSTFIX_QUEUEID:postfix_queueid}: %{POSTFIX_LOSTCONN} with %{POSTFIX_RELAY_INFO}
+
+# master patterns
+POSTFIX_MASTER_START (daemon started|reload) -- version %{DATA:postfix_version}, configuration %{PATH:postfix_config_path}
+POSTFIX_MASTER_EXIT terminating on signal %{INT:postfix_termination_signal}
+
+# bounce patterns
+POSTFIX_BOUNCE_NOTIFICATION %{POSTFIX_QUEUEID:postfix_queueid}: sender (non-delivery|delivery status|delay) notification: %{POSTFIX_QUEUEID:postfix_bounce_queueid}
+
+# scache patterns
+POSTFIX_SCACHE_LOOKUPS statistics: (address|domain) lookup hits=%{INT:postfix_scache_hits} miss=%{INT:postfix_scache_miss} success=%{INT:postfix_scache_success}
+POSTFIX_SCACHE_SIMULTANEOUS statistics: max simultaneous domains=%{INT:postfix_scache_domains} addresses=%{INT:postfix_scache_addresses} connection=%{INT:postfix_scache_connection}
+POSTFIX_SCACHE_TIMESTAMP statistics: start interval %{SYSLOGTIMESTAMP:postfix_scache_timestamp}
+
+# aggregate all patterns
+POSTFIX_SMTPD %{POSTFIX_SMTPD_CONNECT}|%{POSTFIX_SMTPD_DISCONNECT}|%{POSTFIX_SMTPD_LOSTCONN}|%{POSTFIX_SMTPD_NOQUEUE}|%{POSTFIX_SMTPD_PIPELINING}|%{POSTFIX_TLSCONN}|%{POSTFIX_WARNING}|%{POSTFIX_SMTPD_PROXY}|%{POSTFIX_KEYVALUE}
+POSTFIX_CLEANUP %{POSTFIX_CLEANUP_MILTER}|%{POSTFIX_WARNING}|%{POSTFIX_KEYVALUE}
+POSTFIX_QMGR %{POSTFIX_QMGR_REMOVED}|%{POSTFIX_QMGR_ACTIVE}|%{POSTFIX_WARNING}
+POSTFIX_PIPE %{POSTFIX_PIPE_DELIVERED}|%{POSTFIX_PIPE_FORWARD}
+POSTFIX_POSTSCREEN %{POSTFIX_PS_CONNECT}|%{POSTFIX_PS_ACCESS}|%{POSTFIX_PS_NOQUEUE}|%{POSTFIX_PS_TOOBUSY}|%{POSTFIX_PS_CACHE}|%{POSTFIX_PS_DNSBL}|%{POSTFIX_PS_VIOLATIONS}|%{POSTFIX_WARNING}
+POSTFIX_DNSBLOG %{POSTFIX_DNSBLOG_LISTING}
+POSTFIX_ANVIL %{POSTFIX_ANVIL_CONN_RATE}|%{POSTFIX_ANVIL_CONN_CACHE}|%{POSTFIX_ANVIL_CONN_COUNT}
+POSTFIX_SMTP %{POSTFIX_SMTP_DELIVERY}|%{POSTFIX_SMTP_CONNERR}|%{POSTFIX_SMTP_LOSTCONN}|%{POSTFIX_TLSCONN}|%{POSTFIX_WARNING}
+POSTFIX_DISCARD %{POSTFIX_KEYVALUE} status=%{WORD:postfix_status}
+POSTFIX_LMTP %{POSTFIX_SMTP}
+POSTFIX_PICKUP %{POSTFIX_KEYVALUE}
+POSTFIX_TLSPROXY %{POSTFIX_TLSPROXY_CONN}
+POSTFIX_MASTER %{POSTFIX_MASTER_START}|%{POSTFIX_MASTER_EXIT}
+POSTFIX_BOUNCE %{POSTFIX_BOUNCE_NOTIFICATION}
+POSTFIX_SENDMAIL %{POSTFIX_WARNING}
+POSTFIX_POSTDROP %{POSTFIX_WARNING}
+POSTFIX_SCACHE %{POSTFIX_SCACHE_LOOKUPS}|%{POSTFIX_SCACHE_SIMULTANEOUS}|%{POSTFIX_SCACHE_TIMESTAMP}
+POSTFIX_TRIVIAL_REWRITE %{POSTFIX_WARNING}
+POSTFIX_TLSMGR %{POSTFIX_WARNING}
+POSTFIX_LOCAL %{POSTFIX_KEYVALUE}
+
+
+
+
+
+ossec
+
+本节作者：林鹏
+配置OSSEC SYSLOG 输出 （所有agent）
+
+编辑ossec.conf 文件（默认为/var/ossec/etc/ossec.conf）
+在ossec.conf中添加下列内容（10.0.0.1 为 接收syslog 的服务器）
+<syslog_output>
+   <server>10.0.0.1</server>
+   <port>9000</port>
+   <format>default</format>
+</syslog_output>
+开启OSSEC允许syslog输出功能
+/var/ossec/bin/ossec-control enable client-syslog
+重启 OSSEC服务
+/var/ossec/bin/ossec-control start
+配置LOGSTASH
+
+在logstash 中 配置文件中增加(或新建)如下内容：（假设10.0.0.1 为ES服务器,假设文件名为logstash-ossec.conf ）
+input {
+    udp {
+        port => 9000
+        type => "syslog"
+    }
+}
+filter {
+    if [type] == "syslog" {
+        grok {
+            match => { "message" => "%{SYSLOGTIMESTAMP:syslog_timestamp} %{SYSLOGHOST:syslog_host} %{DATA:syslog_program}: Alert Level: %{BASE10NUM:Alert_Level}; Rule: %{BASE10NUM:Rule} - %{GREEDYDATA:Description}; Location: %{GREEDYDATA:Details}" }
+            add_field => [ "ossec_server", "%{host}" ]
+        }
+        mutate {
+            remove_field => [ "syslog_hostname", "syslog_message", "syslog_pid", "message", "@version", "type", "host" ]
+        }
+    }
+}
+output {
+    elasticsearch_http {
+        host => "10.0.0.1"
+    }
+}
+推荐 Kibana dashboard
+
+社区已经有人根据 ossec 的常见需求，制作有 dashboard 可以直接从 Kibana3 页面加载使用。+
+
+
+
+
+Windows Event Log
+
+前面说过如何在 windows 上利用 nxlog 传输日志数据。事实上，对于 windows 本身，也有类似 syslog 的设计，叫 eventlog。本节介绍如何处理 windows eventlog。
+采集端配置
+
+logstash 配置
+
+input {
+    eventlog {
+        #logfile =>  ["Application", "Security", "System"]
+        logfile =>  ["Security"]
+        type => "winevent"
+        tags => [ "caen" ]
+    }
+}
+nxlog 配置
+
+## This is a sample configuration file. See the nxlog reference manual about the
+## configuration options. It should be installed locally and is also available
+## online at http://nxlog.org/nxlog-docs/en/nxlog-reference-manual.html
+
+## Please set the ROOT to the folder your nxlog was installed into,
+## otherwise it will not start.
+
+#define ROOT C:\Program Files\nxlog
+define ROOT C:\Program Files (x86)\nxlog
+
+Moduledir %ROOT%\modules
+CacheDir %ROOT%\data
+Pidfile %ROOT%\data\nxlog.pid
+SpoolDir %ROOT%\data
+LogFile %ROOT%\data\nxlog.log
+
+<Extension json>
+    Module    xm_json
+</Extension>    
+
+<Input in>
+    Module      im_msvistalog
+# For windows 2003 and earlier use the following:
+#   Module      im_mseventlog
+    Exec    to_json();
+</Input>
+
+<Output out>
+    Module      om_tcp
+    Host        10.66.66.66
+    Port        5140
+</Output>
+
+<Route 1>
+    Path        in => out
+</Route>
+Logstash 解析配置
+
+input {
+  tcp {
+    codec => "json"
+    port => 5140
+    tags => ["windows","nxlog"]
+    type => "nxlog-json"
+  }
+} # end input
+
+filter {
+  if [type] == "nxlog-json" {
+    date {
+      match => ["[EventTime]", "YYYY-MM-dd HH:mm:ss"]
+      timezone => "Europe/London"
+    }
+    mutate {
+        rename => [ "AccountName", "user" ]
+        rename => [ "AccountType", "[eventlog][account_type]" ]
+        rename => [ "ActivityId", "[eventlog][activity_id]" ]
+        rename => [ "Address", "ip6" ]
+        rename => [ "ApplicationPath", "[eventlog][application_path]" ]
+        rename => [ "AuthenticationPackageName", "[eventlog][authentication_package_name]" ]
+        rename => [ "Category", "[eventlog][category]" ]
+        rename => [ "Channel", "[eventlog][channel]" ]
+        rename => [ "Domain", "domain" ]
+        rename => [ "EventID", "[eventlog][event_id]" ]
+        rename => [ "EventType", "[eventlog][event_type]" ]
+        rename => [ "File", "[eventlog][file_path]" ]
+        rename => [ "Guid", "[eventlog][guid]" ]
+        rename => [ "Hostname", "hostname" ]
+        rename => [ "Interface", "[eventlog][interface]" ]
+        rename => [ "InterfaceGuid", "[eventlog][interface_guid]" ]
+        rename => [ "InterfaceName", "[eventlog][interface_name]" ]
+        rename => [ "IpAddress", "ip" ]
+        rename => [ "IpPort", "port" ]
+        rename => [ "Key", "[eventlog][key]" ]
+        rename => [ "LogonGuid", "[eventlog][logon_guid]" ]
+        rename => [ "Message", "message" ]
+        rename => [ "ModifyingUser", "[eventlog][modifying_user]" ]
+        rename => [ "NewProfile", "[eventlog][new_profile]" ]
+        rename => [ "OldProfile", "[eventlog][old_profile]" ]
+        rename => [ "Port", "port" ]
+        rename => [ "PrivilegeList", "[eventlog][privilege_list]" ]
+        rename => [ "ProcessID", "pid" ]
+        rename => [ "ProcessName", "[eventlog][process_name]" ]
+        rename => [ "ProviderGuid", "[eventlog][provider_guid]" ]
+        rename => [ "ReasonCode", "[eventlog][reason_code]" ]
+        rename => [ "RecordNumber", "[eventlog][record_number]" ]
+        rename => [ "ScenarioId", "[eventlog][scenario_id]" ]
+        rename => [ "Severity", "level" ]
+        rename => [ "SeverityValue", "[eventlog][severity_code]" ]
+        rename => [ "SourceModuleName", "nxlog_input" ]
+        rename => [ "SourceName", "[eventlog][program]" ]
+        rename => [ "SubjectDomainName", "[eventlog][subject_domain_name]" ]
+        rename => [ "SubjectLogonId", "[eventlog][subject_logonid]" ]
+        rename => [ "SubjectUserName", "[eventlog][subject_user_name]" ]
+        rename => [ "SubjectUserSid", "[eventlog][subject_user_sid]" ]
+        rename => [ "System", "[eventlog][system]" ]
+        rename => [ "TargetDomainName", "[eventlog][target_domain_name]" ]
+        rename => [ "TargetLogonId", "[eventlog][target_logonid]" ]
+        rename => [ "TargetUserName", "[eventlog][target_user_name]" ]
+        rename => [ "TargetUserSid", "[eventlog][target_user_sid]" ]
+        rename => [ "ThreadID", "thread" ]
+    }
+    mutate {
+        remove_field => [
+                    "CurrentOrNextState",
+                    "Description",
+                    "EventReceivedTime",
+                    "EventTime",
+                    "EventTimeWritten",
+                    "IPVersion",
+                    "KeyLength",
+                    "Keywords",
+                    "LmPackageName",
+                    "LogonProcessName",
+                    "LogonType",
+                    "Name",
+                    "Opcode",
+                    "OpcodeValue",
+                    "PolicyProcessingMode",
+                    "Protocol",
+                    "ProtocolType",
+                    "SourceModuleType",
+                    "State",
+                    "Task",
+                    "TransmittedServices",
+                    "Type",
+                    "UserID",
+                    "Version"
+                    ]
+    }
+  }
+
+}
+
+
+
+Java 日志
+
+之前在 codec 章节，曾经提到过，对 Java 日志，除了使用 multiline 做多行日志合并以外，还可以直接通过 log4j 写入到 logstash 里。本节就讲述如何在 Java 应用环境做到这点。
+Log4J
+
+首先，需要配置 Java 应用的 Log4J 设置，启动一个内置的 SocketAppender。修改应用的 log4j.xml 配置文件，添加如下配置段：
+<appender name="LOGSTASH" class="org.apache.log4j.net.SocketAppender">
+    <param name="RemoteHost" value="logstash_hostname" />
+    <param name="ReconnectionDelay" value="60000" />
+    <param name="LocationInfo" value="true" />
+    <param name="Threshold" value="DEBUG" />
+</appender>
+然后把这个新定义的 appender 对象加入到 root logger 里，可以跟其他已有 logger 共存：
+<root>
+    <level value="INFO"/>
+    <appender-ref ref="OTHERPLACE"/>
+    <appender-ref ref="LOGSTASH"/>
+</root>
+如果是 log4j.properties 配置文件，则对应配置如下：
+log4j.rootLogger=DEBUG, logstash
+
+###SocketAppender###
+log4j.appender.logstash=org.apache.log4j.net.SocketAppender
+log4j.appender.logstash.Port=4560
+log4j.appender.logstash.RemoteHost=logstash_hostname
+log4j.appender.logstash.ReconnectionDelay=60000
+log4j.appender.logstash.LocationInfo=true
+Log4J 会持续尝试连接你配置的 logstash_hostname 这个地址，建立连接后，即开始发送日志数据。
+Logstash
+
+Java 应用端的配置完成以后，开始设置 Logstash 的接收端。配置如下所示。其中 4560 端口是 Log4J SocketAppender 的默认对端端口。
+input {
+  log4j {
+    type => "log4j-json"
+    port => 4560
+  }
+}
+异常堆栈测试验证
+
+运行起来 logstash 后，编写如下一个简单 log4j 程序：
+import org.apache.log4j.Logger;
+public class HelloExample{
+        final static Logger logger = Logger.getLogger(HelloExample.class);
+        public static void main(String[] args) {
+                HelloExample obj = new HelloExample();
+                try{
+                        obj.divide();
+                }catch(ArithmeticException ex){
+                        logger.error("Sorry, something wrong!", ex);
+                }
+        }
+        private void divide(){
+                int i = 10 /0;
+        }
+}
+编译运行：
+# javac -cp ./logstash-1.5.0.rc2/vendor/bundle/jruby/1.9/gems/logstash-input-log4j-0.1.3-java/lib/log4j/log4j/1.2.17/log4j-1.2.17.jar HelloExample.java
+# java -cp .:./logstash-1.5.0.rc2/vendor/bundle/jruby/1.9/gems/logstash-input-log4j-0.1.3-java/lib/log4j/log4j/1.2.17/log4j-1.2.17.jar HelloExample
+即可在 logstash 的终端输出看到如下事件记录：
+{
+        "message" => "Sorry, something wrong!",
+       "@version" => "1",
+     "@timestamp" => "2015-07-02T13:24:45.727Z",
+           "type" => "log4j-json",
+           "host" => "127.0.0.1:52420",
+           "path" => "HelloExample",
+       "priority" => "ERROR",
+    "logger_name" => "HelloExample",
+         "thread" => "main",
+          "class" => "HelloExample",
+           "file" => "HelloExample.java:9",
+         "method" => "main",
+    "stack_trace" => "java.lang.ArithmeticException: / by zero\n\tat HelloExample.divide(HelloExample.java:13)\n\tat HelloExample.main(HelloExample.java:7)"
+}
+可以看到，异常堆栈直接就记录在单行内了。
+JSON Event layout
+
+如果无法采用 socketappender ，必须使用文件方式的，其实 Log4J 有一个 layout 特性，用来控制日志输出的格式。和 Nginx 日志自己拼接 JSON 输出类似，也可以通过 layout 功能，记录成 JSON 格式。推荐使用：https://github.com/logstash/log4j-jsonevent-layout+
+
+
+MySQL慢查询日志
+
+MySQL 有多种日志可以记录，常见的有 error log、slow log、general log、bin log 等。其中 slow log 作为性能监控和优化的入手点，最为首要。本节即讨论如何用 logstash 处理 slow log。至于 general log，格式处理基本类似，不过由于 general 量级比 slow 大得多，推荐采用 packetbeat 协议解析的方式更高效的完成这项工作。相关内容阅读本书稍后章节。
+MySQL slow log 的 logstash 处理配置示例如下：
+input {
+  file {
+    type => "mysql-slow"
+    path => "/var/log/mysql/mysql-slow.log"
+    codec => multiline {
+      pattern => "^# User@Host:"
+      negate => true
+      what => "previous"
+    }
+  }
+}
+
+filter {
+  # drop sleep events
+  grok {
+    match => { "message" => "SELECT SLEEP" }
+    add_tag => [ "sleep_drop" ]
+    tag_on_failure => [] # prevent default _grokparsefailure tag on real records
+  }
+  if "sleep_drop" in [tags] {
+    drop {}
+  }
+  grok {
+    match => [ "message", "(?m)^# User@Host: %{USER:user}\[[^\]]+\] @ (?:(?<clienthost>\S*) )?\[(?:%{IP:clientip})?\]\s*# Query_time: %{NUMBER:query_time:float}\s+Lock_time: %{NUMBER:lock_time:float}\s+Rows_sent: %{NUMBER:rows_sent:int}\s+Rows_examined: %{NUMBER:rows_examined:int}\s*(?:use %{DATA:database};\s*)?SET timestamp=%{NUMBER:timestamp};\s*(?<query>(?<action>\w+)\s+.*)\n# Time:.*$" ]
+  }
+  date {
+    match => [ "timestamp", "UNIX" ]
+    remove_field => [ "timestamp" ]
+  }
+}
+运行该配置，logstash 即可将多行的 MySQL slow log 处理成如下事件：
+{
+       "@timestamp" => "2014-03-04T19:59:06.000Z",
+          "message" => "# User@Host: logstash[logstash] @ localhost [127.0.0.1]\n# Query_time: 5.310431  Lock_time: 0.029219 Rows_sent: 1  Rows_examined: 24575727\nSET timestamp=1393963146;\nselect count(*) from node join variable order by rand();\n# Time: 140304 19:59:14",
+         "@version" => "1",
+             "tags" => [
+        [0] "multiline"
+    ],
+             "type" => "mysql-slow",
+             "host" => "raochenlindeMacBook-Air.local",
+             "path" => "/var/log/mysql/mysql-slow.log",
+             "user" => "logstash",
+       "clienthost" => "localhost",
+         "clientip" => "127.0.0.1",
+       "query_time" => 5.310431,
+        "lock_time" => 0.029219,
+        "rows_sent" => 1,
+    "rows_examined" => 24575727,
+            "query" => "select count(*) from node join variable order by rand();",
+           "action" => "select"
+}
+
+
+
+
+
+
+
+
+
+
+性能与测试
+
+任何软件都需要掌握其性能瓶颈，以及线上运行时的性能状态。Logstash 也不例外。
+长久以来，Logstash 在这方面一直处于比较黑盒的状态。因为其内部队列使用的是标准的 stud 库，并非自己实现，在 Logstash 本身源代码里是找不出来什么问题的。我们只能按照其 pipeline 原理，总结出来一些模拟检测的手段。本节主要介绍这方面的内容。
+Logstash 官方已经将性能监控问题，列入 roadmap，或许在未来的 1.6 或者 2.0 版本中，会有质的改变。
+
+
+
+生成测试数据(Generator)
+
+实际运行的时候这个插件是派不上用途的，但这个插件依然是非常重要的插件之一。因为每一个使用 ELK stack 的运维人员都应该清楚一个道理：数据是支持操作的唯一真理（否则你也用不着 ELK）。所以在上线之前，你一定会需要在自己的实际环境中，测试 Logstash 和 Elasticsearch 的性能状况。这时候，这个用来生成测试数据的插件就有用了！
+配置示例
+
+input {
+    generator {
+        count => 10000000
+        message => '{"key1":"value1","key2":[1,2],"key3":{"subkey1":"subvalue1"}}'
+        codec => json
+    }
+}
+插件的默认生成数据，message 内容是 "hello world"。你可以根据自己的实际需要这里来写其他内容。
+使用方式
+
+做测试有两种主要方式：
+配合 LogStash::Outputs::Null
+inputs/generator 是无中生有，output/null 则是锯嘴葫芦。事件流转到这里直接就略过，什么操作都不做。相当于只测试 Logstash 的 pipe 和 filter 效率。测试过程非常简单：
+$ time ./bin/logstash -f generator_null.conf
+real    3m0.864s
+user    3m39.031s
+sys        0m51.621s
+使用 pv 命令配合 LogStash::Outputs::Stdout 和 LogStash::Codecs::Dots
+上面的这种方式虽然想法挺好，不过有个小漏洞：logstash 是在 JVM 上运行的，有一个明显的启动时间，运行也有一段事件的预热后才算稳定运行。所以，要想更真实的反应 logstash 在长期运行时候的效率，还有另一种方法：
+output {
+    stdout {
+        codec => dots
+    }
+}
+LogStash::Codecs::Dots 也是一个另类的 codec 插件，他的作用是：把每个 event 都变成一个点(.)。这样，在输出的时候，就变成了一个一个的 . 在屏幕上。显然这也是一个为了测试而存在的插件。
+下面就要介绍 pv 命令了。这个命令的作用，就是作实时的标准输入、标准输出监控。我们这里就用它来监控标准输出：
+$ ./bin/logstash -f generator_dots.conf | pv -abt > /dev/null
+2.2MiB 0:03:00 [12.5kiB/s]
+可以很明显的看到在前几秒中，速度是 0 B/s，因为 JVM 还没启动起来呢。开始运行的时候，速度依然不快。慢慢增长到比较稳定的状态，这时候的才是你需要的数据。
+这里单位是 B/s，但是因为一个 event 就输出一个 .，也就是 1B。所以 12.5kiB/s 就相当于是 12.5k event/s。
+注：如果你在 CentOS 上通过 yum 安装的 pv 命令，版本较低，可能还不支持 -a 参数。单纯靠 -bt 参数看起来还是有点累的。
+如果你要测试的是 input 插件的效率，方法也是类似的。此外，如果不想使用额外而且可能低版本的 pv 命令，通过 logstash-filter-metric 插件也可以做到类似的效果，官方博客中对此有详细阐述，建议大家阅读。
+额外的话
+
+既然单独花这么一节来说测试，这里想额外谈谈一个很常见的话题： ELK 的性能怎么样？
+其实这压根就是一个不正确的提问。ELK 并不是一个软件而是一个并不耦合的套件。所以，我们需要分拆开讨论这三个软件的性能如何？怎么优化？
+LogStash 的性能，是最让新人迷惑的地方。因为 LogStash 本身并不维护队列，所以整个日志流转中任意环节的问题，都可能看起来像是 LogStash 的问题。这里，需要熟练使用本节说的测试方法，针对自己的每一段配置，都确定其性能。另一方面，就是本书之前提到过的，LogStash 给自己的线程都设置了单独的线程名称，你可以在 top -H 结果中查看具体线程的负载情况。
+Elasticsearch 的性能。这里最需要强调的是：Elasticsearch 是一个分布式系统。从来没有分布式系统要跟人比较单机处理能力的说法。所以，更需要关注的是：在确定的单机处理能力的前提下，性能是否能做到线性扩展。当然，这不意味着说提高处理能力只能靠加机器了——有效利用 mapping API 是非常重要的。不过暂时就在这里讲述了。
+Kibana 的性能。通常来说，Kibana 只是一个单页 Web 应用，只需要 nginx 发布静态文件即可，没什么性能问题。页面加载缓慢，基本上是因为 Elasticsearch 的请求响应时间本身不够快导致的。不过一定要细究的话，也能找出点 Kibana 本身性能相关的话题：因为 Kibana3 默认是连接固定的一个 ES 节点的 IP 端口的，所以这里会涉及一个浏览器的同一 IP 并发连接数的限制。其次，就是 Kibana 用的 AngularJS 使用了 Promise.then 的方式来处理 HTTP 请求响应。这是异步的。+
+
+
+
+心跳检测
+
+缺少内部队列状态的监控办法一直是 logstash 最为人诟病的一点。从 logstash-1.5.1 版开始，新发布了一个 logstash-input-heartbeat 插件，实现了一个最基本的队列堵塞状态监控。
+配置示例如下：
+input {
+    heartbeat {
+        message => "epoch"
+        interval => 60
+        type => "heartbeat"
+        add_field => {
+            "zbxkey" => "logstash.heartbeat",
+            "zbxhost" => "logstash_hostname"
+        }
+    }
+    tcp {
+        port => 5160
+    }
+}
+output {
+    if [type] == "heartbeat" {
+        file {
+            path => "/data1/logstash-log/local6-5160-%{+YYYY.MM.dd}.log"
+        }
+        zabbix {
+            zabbix_host => "zbxhost"
+            zabbix_key => "zbxkey"
+            zabbix_server_host => "zabbix.example.com"
+            zabbix_value => "clock"
+        }
+    } else {
+        elasticsearch { }
+    }
+}
+示例中，同时将数据输出到本地文件和 zabbix server。注意，logstash-output-zabbix 并不是标准插件，需要额外安装：
+bin/plugin install logstash-output-zabbix
+文件中记录的就是 heartbeat 事件的内容，示例如下：
+{"clock":1435191129,"host":"logtes004.mweibo.bx.sinanode.com","@version":"1","@timestamp":"2015-06-25T00:12:09.042Z","type":"heartbeat","zbxkey":"logstash.heartbeat","zbxhost":"logstash_hostname"}
+可以通过文件最后的 clock 和 @timestamp 内容，对比当前时间，来判断 logstash 内部队列是否有堵塞。
+
+
+JMX 监控方式
+
+Logstash 是一个运行在 JVM 上的软件，也就意味着 JMX 这种对 JVM 的通用监控方式对 Logstash 也是一样有效果的。要给 Logstash 启用 JMX，需要修改 ./bin/logstash.lib.sh 中 $JAVA_OPTS 变量的定义，或者在运行时设置 LS_JAVA_OPTS 环境变量。
+在 ./bin/logstash.lib.sh 第 34 行 JAVA_OPTS="$JAVA_OPTS -Djava.awt.headless=true" 下，添加如下几行：
+    JAVA_OPTS="$JAVA_OPTS -Dcom.sun.management.jmxremote"
+    JAVA_OPTS="$JAVA_OPTS -Dcom.sun.management.jmxremote.port=9010"
+    JAVA_OPTS="$JAVA_OPTS -Dcom.sun.management.jmxremote.local.only=false"
+    JAVA_OPTS="$JAVA_OPTS -Dcom.sun.management.jmxremote.authenticate=false"
+    JAVA_OPTS="$JAVA_OPTS -Dcom.sun.management.jmxremote.ssl=false"
+重启 logstash 服务，JMX 配置即可生效。
+有 JMX 以后，我们可以通过 jconsole 界面查看，也可以通过 zabbix 等监控系统做长期监控。甚至 logstash 自己也有插件 logstash-input-jmx 来读取远程 JMX 数据。
+zabbix 监控
+
+zabbix 里提供了专门针对 JMX 的监控项。详见:https://www.zabbix.com/documentation/2.2/manual/config/items/itemtypes/jmx_monitoring
+注意，zabbix-server 本身并不直接对 JMX 发起请求，而是单独有一个 Java Gateway 作为中间代理层角色。zabbix-server 的 java poller 连接 zabbix-java-gateway，由 zabbix-java-gateway 去获取远程 JMX 信息。所以，在 zabbix-web 配置之前，需要先配置 zabbix server 相关进程和设置：
+# yum install zabbix-java-gateway
+# cat >> /etc/zabbix/zabbix-server.conf <<EOF
+JavaGateway=127.0.0.1
+JavaGatewayPort=10052
+StartJavaPollers=5
+EOF
+# /etc/init.d/zabbix-java-gateway restart
+# /etc/init.d/zabbix-server restart
+然后在 zabbix-web 上 Configuration 页，给运行 logstash 的主机的 Host 配置添加 JMX interfaces，Port 即为上面定义的 9010 端口。
+最后添加 Item，Type 下拉框选择 JMX agent，Key 文本框输入 jmx["java.lang:type=Memory", "HeapMemoryUsage.used"]，保存即可。
+JMX 有很多 Key 可以监控，具体的值，可以通过 jconsole 参看。如下图所示，如果要监控线程数，就可以写成 jmx["java.lang:type=Threading", "ThreadCount"]。
+
+
+有了监控项和数据，后续的 Graph, Screen, Trigger 定义，这里就不再讲述了，有需要的读者可以自行查找 Zabbix 相关资料。+
+
+
+
+Logstash 的 监控 API
+
+Logstash 5.0 开始，提供了输出自身进程的指标和状态监控的 API。这大大降低了我们监控 Logstash 的难度。
+目前 API 主要有两类：
+节点指标
+
+node stats 接口目前支持三种类型的指标：
+events
+
+获取该指标的方式为：
+curl -s localhost:9600/_node/stats/events?pretty=true
+是的，Logstash 跟 Elasticsearch 一样也支持用 ?pretty 参数美化 JSON 输出。此外，还支持 ?format=yaml 来输出 YAML 格式的指标统计。Logstash 默认监听在 9600 端口提供这些 API 访问。如果需要修改，通过 --http.port 命令行参数，或者对应的 logstash.yml 设置修改。
+该指标的响应结果示例如下：
+{
+    "events" : {
+        "in" : 59685,
+        "filtered" : 59685,
+        "out" : 59685
+    }
+}
+jvm
+
+获取该指标的方式为：
+curl -s localhost:9600/_node/stats/jvm?pretty=true
+该指标的响应结果示例如下：
+{
+    "jvm" : {
+        "threads" : {
+            "count" : 32,
+            "peak_count" : 34
+        }
+    }
+}
+process
+
+获取该指标的方式为：
+curl -s localhost:9600/_node/stats/process?pretty=true
+该指标的响应结果示例如下：
+{
+    "process" : {
+            "peak_open_file_descriptors" : 64,
+            "max_file_descriptors" : 10240,
+            "open_file_descriptors" : 64,
+        "mem" : {
+            "total_virtual_in_bytes" : 5278068736
+        },
+        "cpu" : {
+            "total_in_millis" : 103290097000,
+            "percent" : 0
+        }
+    }
+}
+目前 beats 家族有个 logstashbeat 项目，就是专门采集这个数据的。
+热线程统计
+
+上面的指标值可能比较适合的是长期趋势的监控，在排障的时候，更需要的是即时的线程情况统计。获取方式如下：
+curl -s localhost:9600/_node/stats/hot_threads?human=true
+该接口默认返回也是 JSON 格式，在看堆栈的时候并不方便，可以用 ?human=true 参数来改成文本换行的样式。效果上跟我们看 Elasticsearch 的 /_nodes/_local/hot_threads 效果就一样了。
+其实节点指标 API 也有 ?human=true 参数，其作用和 hot_threads 不一样，是把一些网络字节数啊，时间啊，改成人类更易懂的大单位。+
+
+
+
+
+扩展方案
+
+之前章节中，讲述的都是单个 logstash 进程，如何配置实现对数据的读取、解析和输出处理。但是在生产环境中，从每台应用服务器运行 logstash 进程并将数据直接发送到 Elasticsearch 里，显然不是第一选择：第一，过多的客户端连接对 Elasticsearch 是一种额外的压力；第二，网络抖动会影响到 logstash 进程，进而影响生产应用；第三，运维人员未必愿意在生产服务器上部署 Java，或者让 logstash 跟业务代码争夺 Java 资源。
+所以，在实际运用中，logstash 进程会被分为两个不同的角色。运行在应用服务器上的，尽量减轻运行压力，只做读取和转发，这个角色叫做 shipper；运行在独立服务器上，完成数据解析处理，负责写入 Elasticsearch 的角色，叫 indexer。
+
+
+logstash 作为无状态的软件，配合消息队列系统，可以很轻松的做到线性扩展。本节首先会介绍最常见的两个消息队列与 logstash 的配合。
+此外，logstash 作为一个框架式的项目，并不排斥，甚至欢迎与其他类似软件进行混搭式的运行。本节也会介绍一些其他日志处理框架以及如何和 logstash 共存的方式（ 《logstashbook》也同样有类似内容）。希望大家各取所长，做好最适合自己的日志处理系统。+
+
+
+利用 Redis 队列扩展 logstash
+
+Redis 服务器是 logstash 官方推荐的 broker 选择。Broker 角色也就意味着会同时存在输入和输出俩个插件。
+读取 Redis 数据
+
+LogStash::Inputs::Redis 支持三种 data_type（实际上是redis_type），不同的数据类型会导致实际采用不同的 Redis 命令操作：
+list => BLPOP
+channel => SUBSCRIBE
+pattern_channel => PSUBSCRIBE
+注意到了么？这里面没有 GET 命令！
+Redis 服务器通常都是用作 NoSQL 数据库，不过 logstash 只是用来做消息队列。所以不要担心 logstash 里的 Redis 会撑爆你的内存和磁盘。
+配置示例
+
+input {
+    redis {
+        data_type => "pattern_channel"
+        key => "logstash-*"
+        host => "192.168.0.2"
+        port => 6379
+        threads => 5
+    }
+}
+使用方式
+
+基本方法
+
+首先确认你设置的 host 服务器上已经运行了 redis-server 服务，然后打开终端运行 logstash 进程等待输入数据，然后打开另一个终端，输入 redis-cli 命令(先安装好 redis 软件包)，在交互式提示符后面输入PUBLISH logstash-demochan "hello world"：
+# redis-cli
+127.0.0.1:6379> PUBLISH logstash-demochan "hello world"
+你会在第一个终端里看到 logstash 进程输出类似下面这样的内容：
+{
+       "message" => "hello world",
+      "@version" => "1",
+    "@timestamp" => "2014-08-08T16:26:29.399Z"
+}
+注意：这个事件里没有 host 字段！（或许这算是 bug……）
+输入 JSON 数据
+
+如果你想通过 redis 的频道给 logstash 事件添加更多字段，直接向频道发布 JSON 字符串就可以了。 LogStash::Inputs::Redis 会直接把 JSON 转换成事件。
+继续在第二个终端的交互式提示符下输入如下内容：
+127.0.0.1:6379> PUBLISH logstash-chan '{"message":"hello world","@version":"1","@timestamp":"2014-08-08T16:34:21.865Z","host":"raochenlindeMacBook-Air.local","key1":"value1"}'
+你会看到第一个终端里的 logstash 进程随即也返回新的内容，如下所示：
+{
+       "message" => "hello world",
+      "@version" => "1",
+    "@timestamp" => "2014-08-09T00:34:21.865+08:00",
+          "host" => "raochenlindeMacBook-Air.local",
+          "key1" => "value1"
+}
+看，新的字段出现了！现在，你可以要求开发工程师直接向你的 redis 频道发送信息好了，一切自动搞定。
+小贴士
+
+这里我们建议的是使用 pattern_channel 作为输入插件的 data_type 设置值。因为实际使用中，你的 redis 频道可能有很多不同的 keys，一般命名成 logstash-chan-%{type} 这样的形式。这时候 pattern_channel 类型就可以帮助你一次订阅全部 logstash 相关频道！
+扩展方式
+
+如上段"小贴士"提到的，之前两个使用场景采用了同样的配置，即数据类型为频道发布订阅方式。这种方式在需要扩展 logstash 成多节点集群的时候，会出现一个问题：通过频道发布的一条信息，会被所有订阅了该频道的 logstash 进程同时接收到，然后输出重复内容！
+你可以尝试再做一次上面的实验，这次在两个终端同时启动 logstash -f redis-input.conf 进程，结果会是两个终端都输出消息。
+这种时候，就需要用 list 类型。在这种类型下，数据输入到 redis 服务器上暂存，logstash 则连上 redis 服务器取走 (BLPOP 命令，所以只要 logstash 不堵塞，redis 服务器上也不会有数据堆积占用空间)数据。
+配置示例
+
+input {
+    redis {
+        batch_count => 1
+        data_type => "list"
+        key => "logstash-list"
+        host => "192.168.0.2"
+        port => 6379
+        threads => 5
+    }
+}
+使用方式
+
+这次我们同时在两个终端运行 logstash -f redis-input-list.conf 进程。然后在第三个终端里启动 redis-cli 命令交互：
+$ redis-cli 
+127.0.0.1:6379> RPUSH logstash-list "hello world"
+(integer) 1
+这时候你可以看到，只有一个终端输出了结果。
+连续 RPUSH 几次，可以看到两个终端近乎各自输出一半条目。
+小贴士
+
+RPUSH 支持 batch 方式，修改 logstash 配置中的 batch_count 值，作为示例这里只改到 2，实际运用中可以更大(事实上 LogStash::Outputs::Redis 对应这点的 batch_event 配置默认值就是 50)。
+重启 logstash 进程后，redis-cli 命令中改成如下发送：
+127.0.0.1:6379> RPUSH logstash-list "hello world" "hello world" "hello world" "hello world" "hello world" "hello world"
+(integer) 3
+可以看到，两个终端也各自输出一部分结果。而你只用了一次 RPUSH 命令。
+输出到 Redis
+
+配置示例
+
+input { stdin {} }
+output {
+    redis {
+        data_type => "channel"
+        key => "logstash-chan-%{+yyyy.MM.dd}"
+    }
+}
+使用方式
+
+我们还是继续先用 redis-cli 命令行来演示 outputs/redis 插件的实质。
+基础方式
+
+运行 logstash 进程，然后另一个终端启动 redis-cli 命令。输入订阅指定频道的 Redis 命令 ("SUBSCRIBE logstash-chan-2014.08.08") 后，首先会看到一个订阅成功的返回信息。如下所示：
+# redis-cli
+127.0.0.1:6379> SUBSCRIBE logstash-chan-2014.08.08
+Reading messages... (press Ctrl-C to quit)
+1) "subscribe"
+2) "logstash-chan-2014.08.08"
+3) (integer) 1
+好，在运行 logstash 的终端里输入 "hello world" 字符串。切换回 redis-cli 的终端，你发现已经自动输出了一条信息：
+1) "message"
+2) "logstash-chan-2014.08.08"
+3) "{\"message\":\"hello world\",\"@version\":\"1\",\"@timestamp\":\"2014-08-08T16:34:21.865Z\",\"host\":\"raochenlindeMacBook-Air.local\"}"
+broker 方式
+
+上面那条信息看起来是不是非常眼熟？这一串字符其实就是我们在前面"读取 Redis 中的数据"小节中使用的那段数据。
+看，这样就把 outputs/redis 和 inputs/redis 串联起来了吧！
+事实上，这就是我们使用 redis 服务器作为 logstassh 架构中 broker 角色的原理。
+让我们把这两节中不同配置的 logstash 进程分别在两个终端运行起来，这次不再要运行 redis-cli 命令了。在配有 outputs/redis 这端输入 "hello world"，配有 "inputs/redis" 的终端上，就自动输出数据了！
+告警用途
+
+我们还可以用其他程序来订阅 redis 频道，程序里就可以随意写其他逻辑了。你可以看看 output/juggernaut 插件的原理。这个 Juggernaut 就是基于 redis 服务器和 socket.io 框架构建的。利用它，logstash 可以直接向 webkit 等支持 socket.io 的浏览器推送告警信息。
+扩展方式
+
+和 LogStash::Inputs::Redis 一样，这里也有设置成 list 的方式。使用 RPUSH 命令发送给 redis 服务器，效果和之前展示的完全一致。包括可以调整的参数 batch_event，也在之前章节中讲过。这里不再重复举例。+
+
+
+通过kafka传输
+
+本节作者：jingbli
+Kafka 是一个高吞吐量的分布式发布订阅日志服务，具有高可用、高性能、分布式、高扩展、持久性等特性。目前已经在各大公司中广泛使用。和之前采用 Redis 做轻量级消息队列不同，Kafka 利用磁盘作队列，所以也就无所谓消息缓冲时的磁盘问题。此外，如果公司内部已有 Kafka 服务在运行，logstash 也可以快速接入，免去重复建设的麻烦。
+如果打算新建 Kafka 系统的，请参考 Kafka 官方入门文档：http://kafka.apache.org/documentation.html#quickstart
+kafka 基本概念
+
+以下仅对相关基本概念说明，更多概念见官方文档：
+Topic 主题，声明一个主题，producer指定该主题发布消息，订阅该主题的consumer对该主题进行消费
+Partition 每个主题可以分为多个分区，每个分区对应磁盘上一个目录，分区可以分布在不同broker上，producer在发布消息时，可以通过指定partition key映射到对应分区，然后向该分区发布消息，在无partition key情况下，随机选取分区，一段时间内触发一次(比如10分钟)，这样就保证了同一个producer向同一partition发布的消息是顺序的。 消费者消费时，可以指定partition进行消费，也可以使用high-level-consumer api,自动进行负载均衡，并将partition分给consumer，一个partition只能被一个consumer进行消费。
+Consumer 消费者，可以多实例部署，可以批量拉取，有两类API可供选择：一个simpleConsumer，暴露所有的操作给用户，可以提交offset、fetch offset、指定partition fetch message；另外一个high-level-consumer(ZookeeperConsumerConnector)，帮助用户做基于partition自动分配的负载均衡，定期提交offset，建立消费队列等。simpleConsumer相当于手动挡，high-level-consumer相当于自动挡。
+simpleConsumer：无需像high-level-consumer那样向zk注册brokerid、owner，甚至不需要提交offset到zk，可以将offset提交到任意地方比如(mysql,本地文件等)。
+high-level-consumer：一个进程中可以启多个消费线程，一个消费线程即是一个consumer，假设A进程里有2个线程(consumerid分别为1，2)，B进程有2个线程(consumerid分别为1，2)，topic1的partition有5个，那么partition分配是这样的：
+    partition1 ---> A进程consumerid1
+    partition2 ---> A进程consumerid1
+    partition3 ---> A进程consumerid2
+    partition4 ---> B进程consumer1
+    partition5 ---> B进程consumer2
+Group High-level-consumer可以声明group，每个group可以有多个consumer，每group各自管理各自的消费offset，各个不同group之间互不关联影响。
+由于目前版本消费的offset、owner、group都是consumer自己通过zk管理，所以group对于broker和producer并不关心，一些监控工具需要通过group来监控，simpleComsumer无需声明group。
+小提示
+
+以上概念是 logstash 的 kafka 插件的必要参数，请理解阅读，对后续使用 kafka 插件有重要作用。logstash-kafka-input 插件使用的是 High-level-consumer API。
+插件安装
+
+logstash-1.4 安装
+
+如果你使用的还是 1.4 版本，需要自己单独安装 logstash-kafka 插件。插件地址见：https://github.com/joekiller/logstash-kafka。
+插件本身内容非常简单，其主要依赖同一作者写的 jruby-kafka 模块。需要注意的是：该模块仅支持 Kafka-0.8 版本。如果是使用 0.7 版本 kafka 的，将无法直接使 jruby-kafka 该模块和 logstash-kafka 插件。
+安装按照官方文档完全自动化的安装。或是可以通过以下方式手动自己安装插件，不过重点注意的是 kafka 的版本，上面已经指出了。
+下载 logstash 并解压重命名为 ./logstash-1.4.0 文件目录。
+下载 kafka 相关组件，以下示例选的为 kafka_2.8.0-0.8.1.1-src，并解压重命名为 ./kafka_2.8.0-0.8.1.1。
+从 releases 页下载 logstash-kafka v0.4.2 版，并解压重命名为 ./logstash-kafka-0.4.2。
+从 ./kafka_2.8.0-0.8.1.1/libs 目录下复制所有的 jar 文件拷贝到 ./logstash-1.4.0/vendor/jar/kafka_2.8.0-0.8.1.1/libs 下，其中你需要创建 kafka_2.8.0-0.8.1.1/libs 相关文件夹及目录。
+分别复制 ./logstash-kafka-0.4.2/logstash 里的 inputs 和 outputs 下的 kafka.rb，拷贝到对应的 ./logstash-1.4.0/lib/logstash 里的 inputs 和 outputs 对应目录下。
+切换到 ./logstash-1.4.0 目录下，现在需要运行 logstash-kafka 的 gembag.rb 脚本去安装 jruby-kafka 库，执行以下命令： GEM_HOME=vendor/bundle/jruby/1.9 GEM_PATH= java -jar vendor/jar/jruby-complete-1.7.11.jar --1.9 ../logstash-kafka-0.4.2/gembag.rb ../logstash-kafka-0.4.2/logstash-kafka.gemspec。
+现在可以使用 logstash-kafka 插件运行 logstash 了。
+logstash-1.5 安装
+
+logstash 从 1.5 版本开始才集成了 Kafka 支持。1.5 版本开始所有插件的目录和命名都发生了改变，插件发布地址见：https://github.com/logstash-plugins。 安装和更新插件都可以使用官方提供的方式：
+$bin/plugin install OR $bin/plugin update
+小贴士
+
+对于插件的安装和更新，默认走的Gem源为 https://rubygems.org,对于咱们国内网络来说是出奇的慢或是根本无法访问（爬梯子除外），在安装或是更新插件是，可以尝试修改目录下 Gemfile 文件中的 source 为淘宝源https://ruby.taobao.org，这样会使你的安装或是更新顺畅很多。
+插件配置
+
+Input 配置示例
+
+以下配置可以实现对 kafka 读取端(consumer)的基本使用。
+消费端更多详细的配置请查看 http://kafka.apache.org/documentation.html#consumerconfigs kafka 官方文档的消费者部分配置文档。
+input {
+    kafka {
+        zk_connect => "localhost:2181"
+        group_id => "logstash"
+        topic_id => "test"
+        codec => plain
+        reset_beginning => false # boolean (optional)， default: false
+        consumer_threads => 5  # number (optional)， default: 1
+        decorate_events => true # boolean (optional)， default: false
+    }
+}
+Input 解释
+
+作为 Consumer 端,插件使用的是 High-level-consumer API，请结合上述 kafka 基本概念进行设置：
+group_id
+消费者分组，可以通过组 ID 去指定，不同的组之间消费是相互不受影响的，相互隔离。
+topic_id
+指定消费话题，也是必填项目，指定消费某个 topic ，这个其实就是订阅某个主题，然后去消费。
+reset_beginning
+logstash 启动后从什么位置开始读取数据，默认是结束位置，也就是说 logstash 进程会以从上次读取结束时的偏移量开始继续读取，如果之前没有消费过，那么就开始从头读取.如果你是要导入原有数据，把这个设定改成 "true"， logstash 进程就从头开始读取.有点类似 cat ，但是读到最后一行不会终止，而是变成 tail -F ，继续监听相应数据。
+decorate_events
+在输出消息的时候会输出自身的信息包括:消费消息的大小， topic 来源以及 consumer 的 group 信息。
+rebalance_max_retries
+当有新的 consumer(logstash) 加入到同一 group 时，将会 reblance ，此后将会有 partitions 的消费端迁移到新的 consumer 上，如果一个 consumer 获得了某个 partition 的消费权限，那么它将会向 zookeeper 注册， Partition Owner registry 节点信息，但是有可能此时旧的 consumer 尚没有释放此节点，此值用于控制，注册节点的重试次数。
+consumer_timeout_ms
+指定时间内没有消息到达就抛出异常，一般不需要改。
+以上是相对重要参数的使用示例，更多参数可以选项可以跟据 https://github.com/joekiller/logstash-kafka/blob/master/README.md 查看 input 默认参数。
+注意
+
+1.想要使用多个 logstash 端协同消费同一个 topic 的话，那么需要把两个或是多个 logstash 消费端配置成相同的 group_id 和 topic_id， 但是前提是要把相应的 topic 分多个 partitions (区)，多个消费者消费是无法保证消息的消费顺序性的。
+这里解释下，为什么要分多个 partitions(区)， kafka 的消息模型是对 topic 分区以达到分布式效果。每个 topic 下的不同的 partitions (区)只能有一个 Owner 去消费。所以只有多个分区后才能启动多个消费者，对应不同的区去消费。其中协调消费部分是由 server 端协调而成。不必使用者考虑太多。只是消息的消费则是无序的。
+总结:保证消息的顺序，那就用一个 partition。 kafka 的每个 partition 只能同时被同一个 group 中的一个 consumer 消费。
+Output 配置
+
+以下配置可以实现对 kafka 写入端 (producer) 的基本使用。
+生产端更多详细的配置请查看 http://kafka.apache.org/documentation.html#producerconfigs kafka 官方文档的生产者部分配置文档。
+ output {
+    kafka {
+        broker_list => "localhost:9092"
+        topic_id => "test"
+        compression_codec => "snappy" # string (optional)， one of ["none"， "gzip"， "snappy"]， default: "none"
+    }
+}
+Output 解释
+
+作为 Producer 端使用，以下仅为重要概念解释，请结合上述 kafka 基本概念进行设置：
+compression_codec
+消息的压缩模式，默认是 none，可以有 gzip 和 snappy (暂时还未测试开启压缩与不开启的性能，数据传输大小等对比)。
+compressed_topics
+可以针对特定的 topic 进行压缩，设置这个参数为 topic ，表示此 topic 进行压缩。
+request_required_acks
+消息的确认模式:
+可以设置为 0: 生产者不等待 broker 的回应，只管发送.会有最低能的延迟和最差的保证性(在服务器失败后会导致信息丢失) 可以设置为 1: 生产者会收到 leader 的回应在 leader 写入之后.(在当前 leader 服务器为复制前失败可能会导致信息丢失) 可以设置为 -1: 生产者会收到 leader 的回应在全部拷贝完成之后。
+partitioner_class
+分区的策略，默认是 hash 取模
+send_buffer_bytes
+socket 的缓存大小设置，其实就是缓冲区的大小
+消息模式相关
+
+serializer_class
+消息体的系列化处理类，转化为字节流进行传输，请注意 encoder 必须和下面的 key_serializer_class 使用相同的类型。
+key_serializer_class
+默认的是与 serializer_class 相同
+producer_type
+生产者的类型 async 异步执行消息的发送 sync 同步执行消息的发送
+queue_buffering_max_ms
+异步模式下，那么就会在设置的时间缓存消息，并一次性发送
+queue_buffering_max_messages
+异步的模式下，最长等待的消息数
+queue_enqueue_timeout_ms
+异步模式下，进入队列的等待时间，若是设置为0，那么要么进入队列，要么直接抛弃
+batch_num_messages
+异步模式下，每次发送的最大消息数，前提是触发了 queue_buffering_max_messages 或是 queue_enqueue_timeout_ms 的限制
+以上是相对重要参数的使用示例，更多参数可以选项可以跟据 https://github.com/joekiller/logstash-kafka/blob/master/README.md 查看 output 默认参数。
+小贴士
+
+logstash-kafka 插件输入和输出默认 codec 为 json 格式。在输入和输出的时候注意下编码格式。消息传递过程中 logstash 默认会为消息编码内加入相应的时间戳和 hostname 等信息。如果不想要以上信息(一般做消息转发的情况下)，可以使用以下配置，例如:
+ output {
+    kafka {
+        codec => plain {
+            format => "%{message}"
+        }
+    }
+}
+作为 Consumer 从kafka中读数据，如果为非 json 格式的话需要进行相关解码，例如：
+input {
+    kafka {
+        zk_connect => "xxx：xxx"
+        group_id => "test"
+        topic_id => "test-topic"
+        codec => "line"
+        ...........
+    }
+}
+性能
+
+队列监控
+
+其实 logstash 的 kafka 插件性能并不是很突出，可以通过使用以下命令查看队列积压消费情况：
+$/bin/kafka-run-class.sh kafka.tools.ConsumerOffsetChecker --group test
+队列积压严重，性能跟不上的情况下，结合实际服务器资源，可以适当增加 topic 的 partition 多实例化 Consumer 进行消费处理消息。
+input-kafka 的 JSON 序列化性能
+
+此外，跟 logstash-input-syslog 改在 filter 阶段 grok 的优化手段类似，也可以将 logstash-input-kafka 的默认 JSON 序列化操作从 codec 阶段后移到 filter 阶段。如下：
+input {
+    kafka {
+        codec => plain
+    }
+}
+filter {
+    json {
+        source => "message"
+    }
+}
+然后通过 bin/logstash -w $num_cpus 运行，利用多核计算优势，可以获得大约一倍左右的性能提升。
+
+
+
+AIX 平台上的 Logstash-Forwarder-Java
+
+本节作者：鹏程
+在AIX环境下（IBM Power小型机的一种操作系统）,你无法使用logstash（因为IBM JDK没有实现相关方法），也无法使用logstash-forwarder，github上有个Logstash-forwarder再实现的项目就是解决这个问题的：https://github.com/didfet/logstash-forwarder-java
+配置和Logstash-forwarder基本一致，但是注意有一个坑是需要关注的，作者也在他的github上提到了，就是：
+the ssl ca parameter points to a java keystore containing the root certificate of the server, not a PEM file
+不熟悉证书相关体系的读者可能不太清楚这个意思，换句话说，如果你还按照logstash-forwarder的配置方法配置shipper端，那么你将会得到一个诡异的java.io.IOException: Invalid keystore format 异常。
+首先介绍下背景知识，摘录一段知乎上的讲解： @刘长元 from http://www.zhihu.com/question/29620953
+把SSL系统比喻为工商局系统。 首先有SSL就有CA，certificate authority。证书局，用于制作、认证证书的第三方机构，我们假设营业执照非常难制作，就像身份证一样，需要有制证公司来提供，并且提供技术帮助工商局验证执照的真伪。然后CA是可以有多个的，也就是可以有多个制证公司，但工商局就只有一个，它来说那个制证公司是可信的，那些是假的，需要打击。在SSL的世界中，微软、Google和Mozilla扮演了一部分这个角色。也就是说，IE、Chrome、Firefox中内置有一些CA，经过这些CA颁发，验证过的证书都是可以信的，否则就会提示你不安全。 这也是为什么前几天Chrome决定屏蔽CNNIC的CA时，CNNIC那么遗憾了。 也因为内置的CA是相对固定的，所以当你决定要新建网站时，就需要购买这些内置CA颁发的证书来让用户看到你的域名前面是绿色的，而不是红色。而这个最大的卖证书的公司就是VeriSign如果你听说过的话，当然它被卖给了Symantec，这家伙不只出Ghost，还是个卖证书的公司。
+要开店的老板去申请营业执照的时候是需要交他的身份证的，然后办出来的营业执照上也会有他的照片和名字。身份证相当于私钥，营业执照就是证书，Ceritficate，.cer文件。
+然后关于私钥和公钥如何解释我没想好，而它们在数据加密层面，数据的流向是这样的。
+消息-->[公钥]-->加密后的信息-->[私钥]-->消息
+公钥是可以随便扔给谁的，他把消息加了密传给我。对了，可以这样理解，我有一个箱子，一把锁和一把钥匙，我把箱子和开着的锁给别人，他写了信放箱子里，锁上，然后传递回我手上的途中谁都是打不开箱子的，只有我可以用原来的钥匙打开，这就是SSL，公钥，私钥传递加密消息的方式。这里的密钥就是key文件。
+于是我们就有了.cer和.key文件。接下来说keystore
+不同的语言、工具序列SSL相关文件的格式和扩展名是不一样的。 其中Java系喜欢用keystore, truststore来干活，你看它的名字，Store，仓库，它里面存放着key和信任的CA，key和CA可以有多个。 这里的truststore就像你自己电脑的证书管理器一样，如果你打开Chrome的设置，找到HTTP SSL，就可以看到里面有很多CA，truststore就是干这个活儿的，它也里面也是存一个或多个CA让Tomcat或Java程序来调用。 而keystore就是用来存密钥文件的，可以存放多个。
+然后是PEM，它是由RFC1421至1424定义的一种数据格式。其实前面的.cert和.key文件都是PEM格式的，只不过在有些系统中（比如Windows）会根据扩展名不同而做不同的事。所以当你看到.pem文件时，它里面的内容可能是certificate也可能是key，也可能两个都有，要看具体情况。可以通过openssl查看。
+看到这儿你就应该懂了，按照logstash-forwarder-java的作者设计，此时你的shipper端ssl ca这个域配置的应该是keystore，而不是PEM，因此需要从你生成的crt中创建出keystore（jks）文件，方法为：
+keytool -importcert -trustcacerts -file logstash-forwarder.crt -alias ca -keystore keystore.jks
+一个示例的shipper.conf为：
+{
+  "network": {
+    "servers": [ "192.168.1.1:5043"],
+    "ssl ca": "/mnt/disk12/logger/logstash/config/keystore.jks"
+  },
+  "files": [
+    {
+      "paths": [ "/mnt/disk12/logger/logstash/config/2.txt" ],
+      "fields": { "type": "sadb" }
+    }
+  ]
+}
+注意：server可以配置多个，这样agent如果一个logstash连接不上可以连接另外的。
+其余配置信息，请参考logstash-forwarder，它完全兼容。主要包括下面几个可用配置项：
+network.servers: 用来指定远端(即 logstash indexer 角色)服务器的 IP 地址和端口。这里可以写数组，但是 logstash-forwarder 只会随机选一台作为对端发送数据，一直到对端故障，才会重选其他服务器。
+network.ssl*: 网络交互中使用的 SSL 证书路径。
+files.*.paths: 读取的文件路径。 logstash-forwarder 只支持两种输入，一种就是示例中用的文件方式，和 logstash 一样也支持 glob 路径，即 "/var/log/*.log" 这样的写法；一种是标准输入，写法为 "paths": [ "-" ]
+files.*.fields: 给每条日志添加的固定字段，相当于 logstash 里的 add_field 参数。
+配置好以后启动它即可：nohup java -jar logstash-forwarder-java-0.2.3-SNAPSHOT.jar -quiet -config logforwarder.conf > logforwarder.log &
+-quiet 参数可以大大减少不必要的日志量，如果遇到错误请打开-debug和-trace选项，得到相关信息后查证，未果时请转向该项目github的issue区，作者很热心+
+
+
+
+
+Rsyslog
+
+Rsyslog 是 RHEL6 开始的默认系统 syslog 应用软件(当然，RHEL 自带的版本较低，实际官方稳定版本已经到 v8 了)。官网地址：http://www.rsyslog.com
+目前 Rsyslog 本身也支持多种输入输出方式，内部逻辑判断和模板处理。
+
+
+常用模块介绍
+
+不同模块插件在 rsyslog 流程中发挥作用的原理，可以阅读：http://www.rsyslog.com/doc/master/configuration/modules/workflow.html
+流程中可以使用 mmnormalize 组件来完成数据的切分(相当于 logstash 的 filters/grok 功能)。
+rsyslog 从 v7 版本开始带有 omelasticsearch 插件可以直接写入数据到 elasticsearch 集群，配合 mmnormalize 的使用示例见: http://puppetlabs.com/blog/use-rsyslog-and-elasticsearch-powerful-log-aggregation
+而 normalize 语法说明见: http://www.liblognorm.com/files/manual/index.html?sampledatabase.htm
+类似的还有 mmfields 和 mmjsonparse 组件。注意，mmjsonparse 要求被解析的 MSG 必须以 @CEE:开头，解析之后的字符串为 JSON。使用示例见:http://blog.sematext.com/2013/05/28/structured-logging-with-rsyslog-and-elasticsearch/
+此外，rsyslog 从 v6 版本开始，设计了一套 rainerscript 作为配置中的 DSL。利用 rainerscript 中的函数，也可以做到一些数据解析和逻辑判断：
+tolower
+cstr
+cnum
+wrap
+replace
+field
+re_extract
+re_match
+contains
+if-else
+foreach
+lookup
+set/reset/unset
+详细说明见：http://www.rsyslog.com/doc/v8-stable/rainerscript/functions.html
+rsyslog 与 logstash 合作
+
+虽然 Rsyslog 很早就支持直接输出数据给 elasticsearch，但如果你使用的是 v8.4 以下的版本，我们这里并不推荐这种方式。因为normalize 语法还是比较简单，只支持时间，字符串，数字，ip 地址等几种。在复杂条件下远比不上完整的正则引擎。
+那么，怎么使用 rsyslog 作为日志收集和传输组件，来配合 logstash 工作呢？
+如果只是简单的 syslog 数据，直接单个 logstash 运行即可，配置方式见本书 2.4 章节。
+如果你运行着一个高负荷运行的 rsyslog 系统，每秒传输的数据远大过单个 logstash 能处理的能力，你可以运行多个 logstash 在多个端口，然后让 rsyslog 做轮训转发(事实上，单个 omfwd 本身的转发能力也有限，所以推荐这种做法)：
+Ruleset( name="forwardRuleSet" ) {
+    Action ( type="mmsequence" mode="instance" from="0" to="4" var="$.seq" )
+    if $.seq == "0" then {
+        action  (type="omfwd" Target="127.0.0.1" Port="5140" Protocol="tcp" queue.size="150000" queue.dequeuebatchsize="2000" )
+    }
+    if $.seq == "1" then {
+        action  (type="omfwd" Target="127.0.0.1" Port="5141" Protocol="tcp" queue.size="150000" queue.dequeuebatchsize="2000" )
+    }
+    if $.seq == "2" then {
+        action  (type="omfwd" Target="127.0.0.1" Port="5142" Protocol="tcp" queue.size="150000" queue.dequeuebatchsize="2000" )
+    }
+    if $.seq == "3" then {
+        action  (type="omfwd" Target="127.0.0.1" Port="5143" Protocol="tcp" queue.size="150000" queue.dequeuebatchsize="2000" )
+    }
+}
+如果 rsyslog 仅是作为 shipper 角色运行，环境中有单独的消息队列可用，rsyslog 也有对应的 omkafka, omredis, omzmq 插件可用。
+rsyslog v8 版的 mmexternal 模块
+
+如果你使用的是 v8.4 及以上版本的 rsyslog，其中有一个新加入的 mmexternal 模块。该模块是在 v7 的 omprog 模块基础上发展出来的，可以让你使用任意脚本，接收标准输入，自行处理以后再输出回来，而 rsyslog 接收到这个输出再进行下一步处理，这就解决了前面提到的 “normalize 语法太简单”的问题！
+下面是使用 rsyslog 的 mmexternal 和 omelasticsearch 完成 Nginx 访问日志直接解析存储的配置。
+rsyslog 配置如下：
+module(load="imuxsock" SysSock.RateLimit.Interval="0")
+module(load="mmexternal")
+module(load="omelasticsearch")
+template(name="logstash-index" type="list") {
+    constant(value="logstash-")
+    property(name="timereported" dateFormat="rfc3339" position.from="1" position.to="4")
+    constant(value=".")
+    property(name="timereported" dateFormat="rfc3339" position.from="6" position.to="7")
+    constant(value=".")
+    property(name="timereported" dateFormat="rfc3339" position.from="9" position.to="10")
+}
+template( name="nginx-log" type="string" string="%msg%\n" )
+if ( $syslogfacility-text == 'local6' and $programname startswith 'wb-www-access-' and not ($msg contains '/2/remind/unread_count' or $msg contains '/2/remind/group_unread') ) then
+{
+    action( type="mmexternal" binary="/usr/local/bin/rsyslog-nginx-elasticsearch.py" interface.input="fulljson" forcesingleinstance="on" )
+    action( type="omelasticsearch"
+            template="nginx-log"
+            server="eshost.example.com"
+            bulkmode="on"
+            dynSearchIndex="on"
+            searchIndex="logstash-index"
+            searchType="nginxaccess"
+            queue.type="linkedlist"
+            queue.size="50000"
+            queue.dequeuebatchsize="5000"
+            queue.dequeueslowdown="100000"
+    )
+    stop
+}
+其中调用的 python 脚本示例如下(注意只是做示例，脚本中的 split 功能其实可以用 rsyslog 的 mmfields 插件完成)：
+#! /usr/bin/python
+import sys
+import json
+import datetime
+
+def nginxLog(data):
+    hostname = data['hostname']
+    logline = data['msg']
+    time_local, http_x_up_calling_line_id, request, http_user_agent, staTus, remote_addr, http_x_log_uid, http_referer, request_time, body_bytes_sent, http_x_forwarded_proto, http_x_forwarded_for, request_uid, http_host, http_cookie, upstream_response_time = logline.split('`')
+    try:
+        upstream_response_time = float(upstream_response_time)
+    except:
+        upstream_response_time = None
+
+    method, uri, verb = request.split(' ')
+    arg = {}
+    try:
+        url_path, url_args = uri.split('?')
+        for args in url_args.split('&'):
+            k, v = args.split('=')
+            arg[k] = v
+    except:
+        url_path = uri
+
+    # Why %z do not implement?
+    ret = {
+        "@timestamp": datetime.datetime.strptime(time_local, ' [%d/%b/%Y:%H:%M:%S +0800]').strftime('%FT%T+0800'),
+        "host": hostname,
+        "method": method.lstrip('"'),
+        "url_path": url_path,
+        "url_args": arg,
+        "verb": verb.rstrip('"'),
+        "http_x_up_calling_line_id": http_x_up_calling_line_id,
+        "http_user_agent": http_user_agent,
+        "status": int(staTus),
+        "remote_addr": remote_addr.strip('[]'),
+        "http_x_log_uid": http_x_log_uid,
+        "http_referer": http_referer,
+        "request_time": float(request_time),
+        "body_bytes_sent": int(body_bytes_sent),
+        "http_x_forwarded_proto": http_x_forwarded_proto,
+        "http_x_forwarded_for": http_x_forwarded_for,
+        "request_uid": request_uid,
+        "http_host": http_host,
+        "http_cookie": http_cookie,
+        "upstream_response_time": upstream_response_time
+    }
+    return ret
+
+def onInit():
+    """ Do everything that is needed to initialize processing
+    """
+
+def onReceive(msg):
+    data = json.loads(msg)
+    ret  = nginxLog(data)
+    print json.dumps({'msg': ret})
+
+def onExit():
+    """ Do everything that is needed to finish processing. This is being called immediately before exiting.
+    """
+    # most often, nothing to do here
+
+onInit()
+keepRunning = 1
+while keepRunning == 1:
+    msg = sys.stdin.readline()
+    if msg:
+        msg = msg[:len(msg)-1]
+        onReceive(msg)
+        sys.stdout.flush()
+    else:
+        keepRunning = 0
+onExit()
+sys.stdout.flush()
+注意输出的时候，顶层的 key 是不能变的，msg 还得叫 msg，如果是 hostname 还得叫 hostname ，等等。否则，rsyslog 会当做处理无效，直接传递原有数据内容给下一步。
+慎用提示
+
+mmexternal 是基于 direct mode 的，所以如果你发送的数据量较大时，rsyslog 并不会像 linkedlist mode 那样缓冲在磁盘队列上，而是持续 fork 出新的 mmexternal 程序，几千个进程后，你的服务器就挂了！！所以，务必开启 forcesingleinstance 选项。
+rsyslog 的 mmgrok 模块
+
+Rsyslog 8.15.0 开始，附带了 mmgrok 模块，系笔者贡献。利用该模块，可以将 Logstash 的 Grok 规则，运用在 Rsyslog 中。欢迎有兴趣的读者试用。+
+
+
+
+nxlog
+
+本节作者：松涛
+nxlog 是用 C 语言写的一个跨平台日志收集处理软件。其内部支持使用 Perl 正则和语法来进行数据结构化和逻辑判断操作。不过，其最常用的场景。是在 windows 服务器上，作为 logstash 的替代品运行。
+nxlog 的 windows 安装文件下载 url 见： http://nxlog.org/system/files/products/files/1/nxlog-ce-2.8.1248.msi
+配置
+
+Nxlog默认配置文件位置在：C:\Program Files (x86)\nxlog。
+配置文件中有3个关键设置，分别是：input（日志输入端）、output（日志输出端）、route（绑定某输入到具体某输出）。。
+例子
+
+假设我们有两台服务器，收集其中的 windows 事务日志：
+logstash服务器ip地址：192.168.1.100
+windows测试服务器ip地址：192.168.1.101
+收集流程：
+nxlog 使用模块 im_file 收集日志文件，开启位置记录功能
+nxlog 使用模块tcp输出日志
+logstash 使用input/tcp ，收集日志，输出至es
+Logstash配置文件
+
+input {
+    tcp {
+        port => 514
+    }
+}
+output{
+    elasticsearch {
+        host => "127.0.0.1"
+        port => "9200"
+        protocol => "http"
+    }
+}
+Nxlog配置文件
+
+<Input testfile>
+    Module im_file
+    File "C:\\test\\\*.log"
+    SavePos TRUE
+</Input>
+
+<Output out>
+    Module om_tcp
+    Host   192.168.1.100
+    Port   514
+</Output>
+
+<Route 1>
+    Path testfile => out
+</Route>
+配置文件修改完毕后，重启服务即可：+
+
+
+Heka
+
+heka 是 Mozilla 公司仿造 logstash 设计，用 Golang 重写的一个开源项目。同样采用了input -> decoder -> filter -> encoder -> output 的流程概念。其特点在于，在中间的 decoder/filter/encoder 部分，设计了 sandbox 概念，可以采用内嵌 lua 脚本做这一部分的工作，降低了全程使用静态 Golang 编写的难度。此外，其 filter 阶段还提供了一些监控和统计报警功能。
+官网地址见：http://hekad.readthedocs.org/
+下面是同样的处理逻辑，通过 syslog 接收 nginx 访问日志，解析并存储进 Elasticsearch，heka 配置文件如下：
+[hekad]
+maxprocs = 48
+
+[TcpInput]
+address = ":514"
+parser_type = "token"
+decoder = "shipped-nginx-decoder"
+
+[shipped-nginx-decoder]
+type = "MultiDecoder"
+subs = ['RsyslogDecoder', 'nginx-access-decoder']
+cascade_strategy = "all"
+log_sub_errors = true
+
+[RsyslogDecoder]
+type = "SandboxDecoder"
+filename = "lua_decoders/rsyslog.lua"
+    [RsyslogDecoder.config]
+    type = "nginx.access"
+    template = '<%pri%>%TIMESTAMP% %HOSTNAME% %syslogtag%%msg:::sp-if-no-1st-sp%%msg:::drop-last-lf%\n'
+    tz = "Asia/Shanghai"
+
+[nginx-access-decoder]
+type = "SandboxDecoder"
+filename = "lua_decoders/nginx_access.lua"
+
+    [nginx-access-decoder.config]
+    type = "combined"
+    user_agent_transform = true
+    log_format = '[$time_local]`$http_x_up_calling_line_id`"$request"`"$http_user_agent"`$staTus`[$remote_addr]`$http_x_log_uid`"$http_referer"`$request_time`$body_bytes_sent`$http_x_forwarded_proto`$http_x_forwarded_for`$request_uid`$http_host`$http_cookie`$upstream_response_time'
+
+[ESLogstashV0Encoder]
+es_index_from_timestamp = true
+fields = ["Timestamp", "Payload", "Hostname", "Fields"]
+type_name = "%{Type}"
+
+[ElasticSearchOutput]
+message_matcher = "Type == 'nginx.access'"
+server = "http://eshost.example.com:9200"
+encoder = "ESLogstashV0Encoder"
+flush_interval = 50
+flush_count = 5000
+heka 目前仿造的还是旧版本的 logstash schema 设计，所有切分字段都存储在 @fields 下。
+经测试，其处理性能跟开启了多线程 filters 的 logstash 进程类似，都在每秒 30000 条。+
+
+
+
+fluentd
+
+Fluentd 是另一个 Ruby 语言编写的日志收集系统。和 Logstash 不同的是，Fluentd 是基于 MRI 实现的，并不是利用多线程，而是利用事件驱动。
+Fluentd 的开发和使用者，大多集中在日本。
+配置示例
+
+Fluentd 受 Scribe 影响颇深，包括节点间传输采用磁盘 buffer 来保证数据不丢失等的设计，也包括配置语法。下面是一段配置示例：
+<source>
+  type tail
+  read_from_head true
+  path /var/lib/docker/containers/*/*-json.log
+  pos_file /var/log/fluentd-docker.pos
+  time_format %Y-%m-%dT%H:%M:%S
+  tag docker.*
+  format json
+</source>
+# Using filter to add container IDs to each event
+<filter docker.var.lib.docker.containers.*.*.log>
+  type record_transformer
+  <record>
+    container_id ${tag_parts[5]}
+  </record>
+</filter>
+
+<match docker.var.lib.docker.containers.*.*.log>
+  type copy
+  <store>
+    # for debug (see /var/log/td-agent.log)
+    type stdout
+  </store>
+  <store>
+    type elasticsearch
+    logstash_format true
+    host "#{ENV['ES_PORT_9200_TCP_ADDR']}" # dynamically configured to use Docker's link feature
+    port 9200
+    flush_interval 5s
+  </store>
+</match>
+注意，虽然示例中演示的是 tail 方式。Fluentd 对应用日志，并不推荐如此读取。FLuentd 为各种编程语言提供了客户端库，应用可以直接加载日志库发送日志。下面是一个 PHP 应用的示例：
+<?php
+require_once __DIR__.'/src/Fluent/Autoloader.php';
+use Fluent\Logger\FluentLogger;
+Fluent\Autoloader::register();
+$logger = new FluentLogger("unix:///var/run/td-agent/td-agent.sock");
+$logger->post("fluentd.test.follow", array("from"=>"userA", "to"=>"userB"));
+Fluentd 使用如下配置接收即可：
+<source>
+  type unix
+  path /var/run/td-agent/td-agent.sock
+</source>
+<match fluentd.test.**>
+  type forward
+  send_timeout 60s
+  recover_wait 10s
+  heartbeat_interval 1s
+  phi_threshold 16
+  hard_timeout 60s
+  <server>
+    name myserver1
+    host 192.168.1.3
+    port 24224
+    weight 60
+  </server>
+  <server>
+    name myserver2
+    host 192.168.1.4
+    port 24224
+    weight 60
+  </server>
+  <secondary>
+    type file
+    path /var/log/fluent/forward-failed
+  </secondary>
+</match>
+fluentd 插件
+
+作为用动态语言编写的软件，fluentd 也拥有大量插件。每个插件都以 RubyGem 形式独立存在。事实上，logstash 在这方面就是学习 fluentd 的。安装方式如下：
+/usr/sbin/td-agent-gem install fluent-plugin-elasticsearch fluent-plugin-grok_parser
+fluentd 插件列表，见：http://www.fluentd.org/plugins。+
+
+
+
+Message::Passing
+
+Message::Passing 是一个仿造 Logstash 写的 Perl5 项目。项目早期甚至就直接照原样也叫 "Logstash" 的名字。
+但实际上，Message::Passing 内部原理设计还是有所偏差的。这个项目整个基于 AnyEvent 事件驱动开发框架(即著名的 libev 库)完成，也要求所有插件不要采取阻塞式编程。所以，虽然项目开发不太活跃，插件接口不甚完善，但是性能方面却非常棒。这也是我从多个 Perl 日志处理框架中选择介绍这个的原因。
+Message::Passing 有比较全的 input 和 output 插件，这意味着它可以通过多种协议跟 logstash 混跑，不过 filter 插件比较缺乏。对等于 grok 的插件叫 Message::Passing::Filter::Regexp( 我写的，嘿嘿)。下面是一个完整的配置示例：
+use Message::Passing::DSL;
+run_message_server message_chain {
+    output stdout => (
+        class => 'STDOUT',
+    );
+    output elasticsearch => (
+        class => 'ElasticSearch',
+        elasticsearch_servers => ['127.0.0.1:9200'],
+    );
+    encoder("encoder",
+        class => 'JSON',
+        output_to => 'stdout',
+        output_to => 'es',
+    );
+    filter regexp => (
+        class => 'Regexp',
+        format => ':nginxaccesslog',
+        capture => [qw( ts status remotehost url oh responsetime upstreamtime bytes )]
+        output_to => 'encoder',
+    );
+    filter logstash => (
+        class => 'ToLogstash',
+        output_to => 'regexp',
+    );
+    decoder decoder => (
+        class => 'JSON',
+        output_to => 'logstash',
+    );
+    input file => (
+        class => 'FileTail',
+        output_to => 'decoder',
+    );
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

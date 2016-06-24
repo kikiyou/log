@@ -1,0 +1,2013 @@
+K3 和 K4 对比
+
+Kibana 4 正式版 2015 年初发布，至今已近半年。但是本书依然将 Kibana 3 和 4 两个版本分别作阐述，并推荐大家同时了解两个系统。因为二者分别基于不同接口，不同目的，采取了不同的页面设计和逻辑。在不同场景下，各有优势。这里稍作解释，免受凑字骗钱之讥。
+Kibana 3 的设计思路和功能
+
+本书一开始就提到，Kibana3 在设计之初，有另一个名字，叫 elasticsearch dashboard。事实上，整个 Kibana3 就是一个围绕着 dashboard 构建的单页应用。
+所以，在页面逻辑上，Kibana3 异常简洁。大量的代码和逻辑，都下放到 panel 层次上。每个 panel 要独立完成自己的可视化设计、数据请求，数据处理，数据渲染。panel 和 panel 之间，则几乎毫无关联。简单一点看，整个页面就像是一堆 iframe 一样。
+而 panel 的设计，则是以使用者角度来考虑的。Kibana3 尽量提供能让运维人员一步到位的使用策略。即，使用者只需要了解 panel 的配置页面能填什么参数，得到什么可视化结果。
+最明显的例子，就是 trend panel。trend panel 背后，其实是针对今天和昨天，分别发起两次请求，然后再拿两次请求的结果，做一次除法，计算涨跌幅。这个除法计算，是在浏览器端完成的。
+类似在浏览器端完成的，还有 histogram panel 的 hits，second 等的计算。
+此外，Kibana3 还有一个非常有用的功能，setting 中的 index pattern，是可以输入多个的，比如 accesslog-[YYYY.MM.DD],syslog-[YYYY.MM.DD]，这样就可以在同一个面板上，看到来自不同索引的数据的情况。
+Kibana 4 的设计思路和功能
+
+从新特性来说，Kibana4 全面支持 Aggregation 接口，还有更多的可视化选择，可以任意拖动自动对齐的挂件框架，保存在 URL 可以跨页面保持的检索条件，以及对页面请求的内部排队机制。
+从页面设计来说，Kibana4 参考了 Splunk 的产品形态，将功能拆分成了搜索，可视化和仪表盘三个标签页。可视化和搜索，是一一绑定的，无法跨多个 index pattern 做搜索，勿论可视化了。而且可视化标签页中，用 d3.js 实现的可视化构建器，与请求 ES 数据的聚合选择器，又是各自独立的插件。
+也就是说，Kibana4 在使用 Aggregation 接口提供更复杂功能和更高性能的同时，彻底改变了用户的使用形式。用户必须明确了解 ES 各个 aggs 接口的意义，请求和响应体的数据情况；还要想清楚可视化的展现形式，充分理解数据字段的作用。然后才能实现想要的结果。毫无疑问，这是有学习成本的。
+至于像 Kibana3 那种在浏览器端计算的功能，Kibana4 中则完全没有。ES 2.0 将会提供一种 pipeline aggregation 特性，目前猜测或许 Kibana4 会在这个 ES 新特性的基础上来实现类似功能。
+在界面美观方面。Kibana4 至今未提供类似 Kibana3 中的 Query 设置功能，包括 Query 别名和颜色选择器这两个常用功能都没有。直接导致目前 Kibana4 的图例几乎毫无作用。
+在 filter 方面，Kibana4 用 filter agg 替代了 Kibana3 使用的 facet_filter。页面表现形式上，Kibana3 是在页面顶部添加 Query 输入框，全局生效；Kibana4 是在 Visualize 页添加 aggs，单个面板生效。依然需要多查询条件对比的用户，需要一个个面板创建，非常麻烦。+
+
+
+K3
+10 分钟入门
+
+Kibana 对实时数据分析来说是特别适合的工具。本节内容首先让你快速入门，了解 Kibana 所能做的大部分事情。如果你还没下载 Kibana，点击右侧链接：下载 Kibana。我们建议你在开始本教程之前，先部署好一个干净的 elasticsearch 进程。
+到本节结束，你就会：
+导入一些数据
+尝试简单的仪表板
+搜索你的数据
+配置 Kibana 只显示你的新索引而不是全部索引
+我们假设你已经：
+在自己电脑上安装好了 Elasticsearch
+在自己电脑上搭建好了网站服务器，并把 Kibana 发行包解压到了发布目录里
+对 UNIX 命令行有一点了解，使用过 curl
+导入数据
+
+我们将使用莎士比亚全集作为我们的示例数据。要更好的使用 Kibana，你需要为自己的新索引应用一个映射集(mapping)。我们用下面这个映射集创建"莎士比亚全集"索引。实际数据的字段比这要多，但是我们只需要指定下面这些字段的映射就可以了。注意到我们设置了对 speaker 和 play_name 不分析。原因会在稍后讲明。
+
+
+
+配置
+
+config.js 是 Kibana 核心配置的地方。文件里包括的参数都是必须在初次运行 kibana 之前提前设置好的。在你把 Kibana 和 ES 从自己个人电脑搬上生产环境的时候，一定会需要修改这里的配置。下面介绍几个最常见的修改项：
+参数
+
+elasticsearch
+你 elasticsearch 服务器的 URL 访问地址。你应该不会像写个 http://localhost:9200 在这，哪怕你的 Kibana 和 Elasticsearch 是在同一台服务器上。默认的时候这里会尝试访问你部署 kibana 的服务器上的 ES 服务，你可能需要设置为你 elasticsearch 服务器的主机名。
+注意：如果你要传递参数给 http 客户端，这里也可以设置成对象形式，如下：
++elasticsearch: {server: "http://localhost:9200", withCredentials: true}+
+default_route
+没有指明加载哪个仪表板的时候，默认加载页路径的设置参数。你可以设置为文件，脚本或者保存的仪表板。比如，你有一个保存成 "WebLogs" 的仪表板在 elasticsearch 里，那么你就可以设置成：
+default_route: /dashboard/elasticsearch/WebLogs,
+kibana_index
+用来保存 Kibana 相关对象，比如仪表板，的 Elasticsearch 索引名称。默认为 kibana-int。
+panel_name
+可用的面板模块数组。面板只有在仪表板中有定义时才会被加载，这个数组只是用在 "add panel" 界面里做下拉菜单。
+
+
+保存和加载
+
+你已经构建了一个漂亮的仪表板！现在你打算分享给团队，或者开启自动刷新后挂在一个大屏幕上？Kibana 可以把仪表板设计持久化到 Elasticsearch 里，然后在需要的时候通过加载菜单或者 URL 地址调用出来。
+image
+
+保存你漂亮的仪表板
+
+保存你的界面非常简单，打开保存下拉菜单，取个名字，然后点击保存图表即可。现在你的仪表板就保存在一个叫做 kibana-int 的 Elasticsearch 索引里了。
+image
+
+调用你的仪表板
+
+要搜索已保存的仪表板列表，点击右上角的加载图标。在这里你可以加载，分享和删除仪表板。
+image
+
+分享仪表板
+
+已保存的仪表板可以通过你浏览器地址栏里的 URL 分享出去。每个持久化到 Elasticsearch 里的仪表板都有一个对应的 URL，像下面这样：
+http://your_host/index.html#/dashboard/elasticsearch/MYDASHBOARD
+这个示例中 MYDASHBOARD 就是你在保存的时候给仪表板取得名字。
+你还可以分享一个即时的仪表板链接，点击 Kibana 右上角的分享图标，会生成一个临时 URL。
+image
+
+默认情况下，临时 URL 保存 30 天。
+image
+
+保存成静态仪表板
+
+仪表板可以保存到你的服务器磁盘上成为 .json 文件。把文件放到 app/dashboards 目录，然后通过下面地址访问
+http://your_host/index.html#/dashboard/file/MYDASHBOARD.json
+MYDASHBOARD.json 就是磁盘上文件的名字。注意路径中得 /#dashboard/file/ 看起来跟之前访问保存在 Elasticsearch 里的仪表板很类似，不过这里访问的是文件而不是 elasticsearch。导出的仪表板纲要的详细信息，阅读稍后 scheme 简介小节。
+下一步
+
+你现在知道怎么保存，加载和访问仪表板了。你可能想知道怎么通过 URL 传递参数来访问，这样可以在其他应用中直接链接过来。请阅读稍后 scripted 用法 和 template 用法 两节。+
+
+
+布局
+
+之前说过，Kibana3 是一个单页应用。所以其页面布局设计是固定的。顶部栏作为全局设置，接下来是全局 Query 栏，全局 Filtering 栏，以及具体可视化图表的部分。
+本节就介绍这两部分的操作方式和用法。+
+
+
+请求和过滤
+
+图啊，表啊，地图啊，Kibana 有好多种图表，我们怎么控制显示在这些图表上的数据呢？这就是请求和过滤起作用的地方。 Kibana 是基于 Elasticsearch 的，所以支持强大的 Lucene Query String 语法，同样还能用上 Elasticsearch 的过滤器能力。
+我们的仪表板
+
+我们的仪表板像下面这样，可以搜索莎士比亚文集的内容。如果你喜欢本章截图的这种仪表板样式，你可以下载导出的仪表板纲要(dashboard schema)
+image
+
+请求
+
+在搜索栏输入下面这个非常简单的请求
+to be or not to be
+你会注意到，表格里第一条就是你期望的《哈姆雷特》。不过下一行却是《第十二夜》的安德鲁爵士，这里可没有"to be"，也没有"not to be"。事实上，这里匹配上的是 to OR be OR or OR not OR to OR be。
+我们需要这么搜索(译者注：即加双引号)来匹配整个短语：
+"to be or not to be"
+或者指明在某个特定的字段里搜索：
+line_id:86169
+我们可以用 AND/OR 来组合复杂的搜索，注意这两个单词必须大写：
+food AND love
+还有括号：
+("played upon" OR "every man") AND stage
+数值类型的数据可以直接搜索范围：
+line_id:[30000 TO 80000] AND havoc
+最后，当然是搜索所有：
+*
+多个请求
+
+有些场景，你可能想要比对两个不同请求的结果。Kibana 可以通过 OR 的方式把多个请求连接起来，然后分别进行可视化处理。
+添加请求
+
+点击请求输入框右侧的 + 号，即可添加一个新的请求框。
+image
+
+点击完成后你应该看到的是这样子
+image
+
+在左边，绿色输入框，输入 "to be" 然后右边，黄色输入框，输入 "not to be"。这就会搜索每个包含有 "to be" 或者 "not to be" 内容的文档，然后显示在我们的 hits 饼图上。我们可以看到原先一个大大的绿色圆形变成下面这样：
+image
+
+移除请求
+
+要移除一个请求，移动鼠标到这个请求输入框上，然后会出现一个 x 小图标，点击小图标即可：
+image
+
+颜色和图例
+
+Kibana 会自动给你的请求分配一个可用的颜色，不过你也可以手动设置颜色。点击请求框左侧的彩色圆点，就可以弹出请求设置下拉框。这里面可以修改请求的颜色，或者设置为这个请求设置一个新的图例文字：
+image
+
+过滤
+
+很多 Kibana 图表都是交互式的，可以用来过滤你的数据视图。比如，点击你图表上的第一个条带，你会看到一些变动。整个图变成了一个大大的绿色条带。这是因为点击的时候，就添加了一个过滤规则，要求匹配 play_name 字段里的单词。
+image
+
+你要问了“在哪里过滤了”？
+答案就藏在过滤(FILTERING)标签上出现的白色小星星里。点击这个标签，你会发现在 filtering 面板里已经添加了一个过滤规则。在 filtering 面板里，可以添加，编辑，固定，删除任意过滤规则。很多面板都支持添加过滤规则，包括表格(table)，直方图(histogram)，地图(map)等等。
+image
+
+过滤规则也可以自己点击 + 号手动添加。+
+
+
+
+
+行和面板
+
+Kibana 仪表板的可视化图标部分是由行和面板组成的。这些都可以随意的添加，删除和重组。
+这节我们会介绍：
+加载一个空白仪表板
+添加，隐藏行，以及修改行高
+添加面板和修改面板宽度
+删除面板和行
+我们假设你已经：
+在自己电脑上安装好了 Elasticsearch
+在自己电脑上搭建好了网站服务器，并把 Kibana 发行包解压到了发布目录里
+按照之前 kibana 入门小节的内容创建好了存有莎士比亚文集的索引
+加载一个空白仪表板
+
+home screen
+
+从主屏里选择第三项，就会加载一个空白仪表板(Blank Dashboard)。默认情况下，空白仪表板会搜索 Elasticsearch 的 _all 索引，也就是你的全部索引。要指定搜索某个索引的方法，已在 kibana 入门小节中介绍。
+添加一行
+
+Adding a row
+
+你的新空白仪表板上只有展开的请求和过滤区域，页面顶栏上有个时间过滤选择器，除此以外什么都没有。在右下方，点击添加行(ADD A ROW)按钮，添加你的第一行。
+Adding a row
+
+给你的行取个名字，然后点击创建(Create Row)按钮。你会看到你的新行出现在左侧的行列表里。点击保存(Save)
+行的控制
+
+Row buttons
+
+现在你有了一行，你会注意到仪表板上多了点新元素。主要是左侧多出来的三个小小的不同颜色的长方形。移动鼠标到它们上面
+Row buttons
+
+哈哈！看到了吧，这三个按钮是让你做这三件事情的：
+折叠行(蓝色)
+配置行(橘色)
+添加面板(绿色)
+添加面板
+
+现在我们专注在行控制力的绿色按钮上，试试点击它。你也可以点击空白行内的灰色按钮(Add panel to empty row)，不过它是灰色的啊，有啥意思……
+Add panel
+
+让我们来添加一个 terms 面板。terms 面板可以让我们用上 Elasticsearch 的 terms facet 功能，查找一个字段内最经常出现的几个值。
+Add panel
+
+你可以看到，terms 面板有一系列可配置选选，不过我们现在先只管第一段里德通用配置好了：
+Title: 面板的名称
+Span: 面板的宽度。Kibana 仪表板等分成 12 个 spans 面板最大就是到 12 个 spans 宽。但是行可以容纳超过 12 个 spans 的总宽度，因为它会自动把新的面板放到下面显示。现在我们先设置为 4。
+Editable: 面板是否在之后可以继续被编辑。现在先略过。
+Inspectable: 面板是否允许用户查看所用的请求内容。现在先略过。
+点击 Save 添加你的新 terms 面板到你的仪表板
+译者注：面板宽度也可以在仪表板内直接拖拽修改，将鼠标移动至面板左(右)侧边线处，鼠标会变成相应的箭头，按住左键拖拽成满意宽度松开即可
+First panel
+
+太棒了！你现在有一个面板了！你可能意识到这个数据跟 kibana 入门中的饼图数据一样。 shakespeare 数据集集中在 lines，还有少量的 acts 和 scenes。
+折叠和展开行
+
+Row buttons
+
+蓝色按钮可以折叠你的行。被折叠行里的面板不会刷新数据，也就不要求 Elasticsearch 资源。所以折叠行可以用于那些你不需要经常看的数据。有需要的时候点击蓝色按钮展开就可以了。
+Collapsed row
+
+顶部的请求和过滤区域也可以被折叠。点击彩色标签就可以折叠和展开。
+Collapsed top row
+
+编辑行
+
+通过行编辑器，可以给行重命名，改行高等其他配置。点击橙色按钮打开行编辑器。
+Row
+
+这个对话框还允许你修改面板的排序和大小，以及删除面板。
+Removing Panels
+
+移动和删除面板
+
+面板可以在本行，甚至其他行之间任意拖拽。按住面板右上角的十字架形状小图标然后拖动即可。
+Removing Panels
+
+点击面板右上角的 remove 小图标就可以从仪表板上移除它。前面说到从行编辑器上也可以做到统一效果。
+Removing Panels
+
+移动和删除行
+
+行可以在仪表板配置页中重新排序和删。点击屏幕右上角的配置按钮，选择行(Rows)标签切换到行配置层。看到这里你一定会记起来我们在添加第一个行时候的屏幕。
+Removing Rows
+
+左侧的箭头用来修改仪表板上行的次序。X 用来删除行。
+下一步
+
+在你关闭浏览器之前，你可能打算保存这个新仪表板。请按照之前 dashboard 的保存和载入小节的介绍操作。+
+
+
+
+面板
+
+Kibana 仪表板由面板(panels)块组成。面板在行中可以起到很多作用，不过大多数是用来给一个或者多个请求的数据集结果做可视化。剩下一些面板则用来展示数据集或者用来为使用者提供插入指令的地方。
+面板可以很容易的通过 Kibana 网页界面配置。为了了解更高级的用法，比如模板化或者脚本化仪表板，这章开始介绍面板属性。你可以发现一些通过网页界面看不到的设置。
+每个面板类型都有自己的属性，不过有这么几个是大家共有的。
+span
+
+一个从 1-12 的数字，描述面板宽度。
+editable
+
+是否在面板上显示编辑按钮。
+type
+
+本对象包含的面板类型。每个具体的面板类型又要求添加新的属性，具体列表说明稍后详述。
+译作者注
+
+官方文档中只介绍了各面板的参数，而且针对的是要使用模板化，脚本化仪表板的高级用户，其中有些参数甚至在网页界面上根本不可见。
+为了方便初学者，我在每个面板的参数介绍之后，自行添加界面操作和效果方面的说明。
+另外，本书 Kibana3 介绍基于我的 https://github.com/chenryn/kibana.git 分支，其中有十多处增强功能式的扩展。读者如果发现操作介绍中内容在自己界面上找不到的，可以尝试替换我的版本。+
+
+
+histogram
+
+状态：稳定
+histogram 面板用以显示时间序列图。它包括好几种模式和变种，用以显示时间的计数，平均数，最大值，最小值，以及数值字段的和，计数器字段的导数。
+参数
+
+轴(axis)参数
+mode
+
+用于 Y 轴的值。除了 count 以外，其他 mode 设置都要求定义 value_field 参数。可选值为：count, mean, max, min, total。我的 fork 中新增了一个可选值为 uniq。
+time_field
+X 轴字段。必须是在 Elasticsearch 中定义为时间类型的字段。
+value_field
+如果 mode 设置为 mean, max, min 或者 total，Y 轴字段。必须是数值型。
+x-axis
+是否显示 X 轴。
+y-axis
+是否显示 Y 轴。
+scale
+以该因子规划 Y 轴
+y_format
+Y 轴数值格式，可选：none, bytes, short
+注释
+
+注释对象
+
+可以指定一个请求的结果作为标记显示在图上。比如说，标记某时刻部署代码了。
+annotate.enable
+是否显示注释(即标记)
+annotate.query
+标记使用的 Lucene query_string 语法请求
+annotate.size
+最多显示多少标记
+annotate.field
+显示哪个字段
+annotate.sort
+数组排序，格式为 [field,order]。比如 [‘@timestamp’,‘desc’] ，这是一个内部参数。
+auto_int
+是否自动调整间隔
+resolution
+如果 auto_int 设为真，shoot for this many bars.
+interval
+如果 auto_int 设为假，用这个值做间隔
+intervals
+在 View 选择器里可见的间隔数组。比如 [‘auto’,‘1s’,‘5m’,‘3h’]，这是绘图参数。
+lines
+显示折线图
+fill
+
+折线图的区域填充因子，从 1 到 10。
+linewidth
+折线的宽度，单位为像素
+points
+在图上显示数据点
+pointradius
+数据点的大小，单位为像素
+bars
+
+显示条带图
+stack
+堆叠多个序列
+spyable
+显示审核图标
+zoomlinks
+显示 ‘Zoom Out’ 链接
+options
+显示快捷的 view 选项区域
+legend
+显示图例
+show_query
+如果没设别名(alias)，是否显示请求
+interactive
+允许点击拖拽进行放大
+legend_counts
+在图例上显示计数
+timezone
+是否调整成浏览器时区。可选值为：browser, utc
+percentage
+把 Y 轴数据显示成百分比样式。仅对多个请求时有效。
+zerofill
+提高折线图准确度，稍微消耗一点性能。
+derivative
+在 X 轴上显示该点数据在前一个点数据上变动的数值。
+提示框(tooltip)对象
+tooltip.value_type
+控制 tooltip 在堆叠图上怎么显示，可选值：独立(individual)还是累计(cumulative)
+tooltip.query_as_alias
+如果没设别名(alias)，是否显示请求
+网格(grid)对象
+Y 轴的最大值和最小值
+grid.min
+Y 轴的最小值
+grid.max
+Y 轴的最大值
+请求(queries)
+请求对象
+
+这个对象描述本面板使用的请求。
+queries.mode
+在可用请求中应该用哪些？可设选项有：all, pinned, unpinned, selected
+queries.ids
+如果设为 selected 模式，具体被选的请求编号。
+界面配置说明
+
+添加面板的方式在之前的"行和面板"一节中已经有过讲解。在 "Add panel"对话框选择类型为 "histogram" 后，你会看到一系列可配置的选项：
+histogram panel setting
+
+选项分为四类，可以在添加之后，通过点击面板右上角的配置"Configure"小图标弹出浮层继续修改。
+通用(General)配置
+主要用来修改面板的标题和宽度
+histogram panel setting general
+
+面板(Panel)配置
+设置面板向 Elasticsearch 发出何种请求，以及请求中需要使用的变量。
+histogram panel setting panel
+
+在 histogram 面板中，经常用的 Chart value(即参数部分描述的mode) 有：
+count
+最常见场景就是统计请求数。这种时候只需要提供一个在 Elasticsearch 中是时间类型的字段(即参数部分描述的 time_field)即可。一般来说，都是 @timestamp，所以不用修改了。这也是默认的 Logstash 仪表板的基础面板的样式
+mean
+
+最常见场景就是统计平均时间。这时候配置浮层会变成下面这个样子：
+histogram panel setting for mean
+
+这里就需要提供一个在 Elasticsearch 中是数值类型的字段(即参数部分描述的 value_field)作为计算平均值的数据集来源了。以 nginx 访问日志为例，这里就填 "request_time"。
+如果你在 Logstash 中使用的是 %{NUMBER:request_time}，那么实际类型还是字符串(请记住，正则捕获是 String 类的方法，也只能生成 String 结果)，必须写成 %{NUMBER:request_time:float} 强制转换才行。否则，你会看到如下报错信息：
+classcastexception
+
+total
+最常见场景就是统计带宽。配置界面和 mean 是一样的。同样要求填写数值类型的字段名，比如 "bytes_sent"。
+带宽在习惯上会换算成每秒数据，但是通过修改 interval 的方式来求每秒数据，对 elasticsearch 性能是一个很大的负担，绘制出来的图形也太过密集影响美观。所以 Kibana 提供了另一种方式：保持 interval，勾选 seconds。Kibana 会自动将每个数值除以间隔秒数得到每秒数据。(count 也可以这样，用来计算 qps 等数据)
+histogram per second
+
+另一个有用的功能，假如你的日志量实在太大，被迫采用抽样日志的方式，可以在 Kibana 上填写 Scale 。比如百分之一的抽样日志，Scale 框就写 100，带宽数据就会在展示的时候自动翻 100 倍显示出来。
+histogram panel total scale
+
+uniq
+
+ES 从 1.1 版本开始通过 HyperLogLog++ 算法支持去重统计聚合。在用 Aggregation API 重写了 histogram panel 后，也可以支持了。
+histogram uniq config
+
+常用场景比如：UV 统计。效果如下：
+histogram uniq
+
+风格(Style)配置
+histogram panel style
+
+设置获取的数据如何展现。其中小部分(即条带(Bars)、折线(Lines)、散点(Points))可以直接在面板左上角的 "View" 下拉菜单里直接勾选。
+histogram view
+
+对于带宽数据，可以切换 Y Format 为 bytes。则 Y 轴数据可以自动换算成 MB，GB 的形式，比较方便
+histogram bytes
+
+此外，还可以在 Grid 区域定义 Y 轴的起始点和终点的具体值。这可以用来在 Y 轴上放大部分区域，观察细微变动；或者忽略某些异常值。
+histogram bytes
+
+如果面板关联了多个请求，可以勾选以堆叠(Stack)方式展示(最常见的堆叠展示的监控数据就是 CPU 监控)。
+histogram stack
+
+堆叠的另一种形式是百分比。在勾选了 Stack 的前提下勾选 Percent。
+histogram panel percent
+
+效果如下。注意：百分比是 A / (A + B) 的值，而不是 A / B。
+histogram percent
+
+关联请求(Queries)配置
+histogram panel queries
+
+默认的 Queries 方式是 all。可以使用 selected 方式，在右侧选择具体的请求框(可多选)。被选中的会出现边框加粗放大效果。
+多请求的默认效果如下。而堆叠和百分比效果，在之前已经谈过。可以对比上下两图的 Y 轴刻度：
+
+
+table
+
+状态：稳定
+表格面板里是一个可排序的分页文档。你可以定义需要排列哪些字段，并且还提供了一些交互功能，比如执行 terms 聚合查询。
+参数
+
+size
+
+每页显示多少条
+pages
+展示多少页
+offset
+当前页的页码
+sort
+
+定义表格排序次序的数组，示例如右：[‘@timestamp’,‘desc’]
+overflow
+css 的 overflow 属性。‘min-height’ (expand) 或 ‘auto’ (scroll)
+fields
+表格显示的字段数组
+highlight
+高亮显示的字段数组
+sortable
+设为假关掉排序功能
+header
+设为假隐藏表格列名
+paging
+设为假隐藏表格翻页键
+field_list
+设为假隐藏字段列表。使用者依然可以展开它，不过默认会隐藏起来
+all_fields
+设为真显示映射表内的所有字段，而不是表格当前使用到的字段
+trimFactor
+裁剪因子(trim factor)，是参考表格中的列数来决定裁剪字段长度。比如说，设置裁剪因子为 100，表格中有 5 列，那么每列数据就会被裁剪为 20 个字符。完整的数据依然可以在展开这个事件后查看到。
+localTime
+设为真调整 timeField 的数据遵循浏览器的本地时区。
+timeField
+如果 localTime 设为真，该字段将会被调整为浏览器本地时区。
+spyable
+设为假，不显示审查(inspect)按钮。
+请求(queries)
+请求对象
+
+这个对象描述本面板使用的请求。
+queries.mode
+在可用请求中应该用哪些？可设选项有：all, pinned, unpinned, selected
+queries.ids
+如果设为 selected 模式，具体被选的请求编号。
+界面配置说明
+
+table 和 histogram 面板，是 kibana 默认的 logstash 仪表板里唯二使用的面板。可以说是最重要和常用的组件。
+虽然重要，table 面板的可配置项却不多。主要是 panel 和 paging 两部分：
+panel
+
+
+
+panel 设置可以分成几类，其中比较重要和有用的是：
+时间字段
+Time Field 设置的作用，和 histogram 面板中类似，主要是帮助 Kibana 使用者自动转换 elasticsearch 中的 UTC 时间成本地时间。
+裁剪因子
+和 Splunk 不同，Kibana 在显示事件字段的时候，侧重于单行显示。详情内容通过点击具体某行向下展开的方式参看。每个字段在屏幕中的可用宽度，就会通过裁剪因子来计算。计算方式见官方参数说明部分。
+
+
+字段列表
+table 面板左侧，是字段列表多选区域。字段分为 _all 和 current 两种。_all 是 Kibana 通过 elasticsearch 的 _mapping API 直接获取的索引内所有存在过的字段；current 则仅显示 table 匹配范围内的数据用到的字段。
+勾选字段列表中某个字段，该字段就加入 table 面板右侧的表格中成为一列。
+
+
+字段列表中，可以点击具体字段，查看 table 匹配范围内该字段数据的统计和排行数据的小面板。
+
+
+小面板上虽然只显示一个很小范围内(即size pages，默认是 500)的数据统计，但是点击小面板底部的 *TERMS 下拉菜单选项，生成的 term panel 浮层数据却都是基于整个搜索结果的。这部分的内容介绍。请阅读 term panel 章节。
+排序
+设置中可以设置一个默认的排序字段。在 logstash 仪表板默认的 event table 中，设置的是时间字段 @timestamp 。不过这个设置，指的是面板加载的时候，使用该字段排序，实际你可以在表头任意字段名上单击，以该字段的值来临时排序。排序字段会在表头本列字段名后，出现一个小三角图标，三角箭头朝上代表升序，反之降序：
+
+
+高亮
+elasticsearch 作为一种搜索引擎，很贴心的提供了高亮功能。Kibana 中也同样支持解析 ES 返回的 HTML 高亮文本。只需要在 panel 标签页右侧添加 Highlighted field，在搜索框里填入的关键词，如果出现在被指定为 Highlighted field 的字段里，这个词在 table 里就会高亮显示(前提是该字段已经在字段列表中勾选)。
+
+
+小贴士：高亮仅在 table 状态有效，点击展开后的事件详情中是不会高亮的。
+paging
+
+考虑到同时展示太多内容，一来对 elasticsearch 压力较大，二来影响页面展示效果和渲染性能。
+
+
+注意： paging 其实是一次请求下来设定大小的全部数据，然后在浏览器上分页显示，而不是调用 scroll API 来逐步显示。所以，千万不要设置太大！+
+
+
+
+map
+
+状态：稳定
+map 面板把 2 个字母的国家或地区代码转成地图上的阴影区域。目前可用的地图包括世界地图，美国地图和欧洲地图。
+参数
+
+map
+
+显示哪个地图：world, usa, europe
+colors
+用来涂抹地图阴影的颜色数组。一旦设定好这 2 个颜色，阴影就会使用介于这 2 者之间的颜色。示例 [‘#A0E2E2’, ‘#265656’]
+size
+
+阴影区域的最大数量
+exclude
+排除的区域数组。示例 [‘US’,‘BR’,‘IN’]
+spyable
+设为假，不显示审查(inspect)按钮。
+请求(queries)
+请求对象
+
+这个对象描述本面板使用的请求。
+queries.mode
+在可用请求中应该用哪些？可设选项有：all, pinned, unpinned, selected
+queries.ids
+如果设为 selected 模式，具体被选的请求编号。
+界面配置说明
+
+考虑到都是中国读者，本节准备采用中国地图进行讲解，中国地图代码，，基于本人 https://github.com/chenryn/kibana.git 仓库，除标准的 map 面板参数外，还提供了 terms_stats 功能，也会一并讲述。
+map 面板，最重要的配置即输入字段，对于不同的地图，应该配置不同的 Field：
+world
+对于世界地图，其所支持的格式为由 2 个字母构成的国家名称缩写，比如：US，CN，JP等。如果你使用了 LogStash::Filters::GeoIP 插件，那么默认生成的 geoip.country_code2 字段正好符合条件。
+map world
+
+cn
+
+对于中国地图，其所支持的格式则是由 2 个数字构成的省份编码，比如：01(即安徽)，30(即广东)，04(即江苏)等。如果你使用了 LogStash::Filters::GeoIP 插件，那么默认生成的 geoip.region_name 字段正好符合条件。
+map cn
+
+如果你使用了我的仓库代码，或者自行合并了该功能，你的 map 面板配置界面会稍有变动成下面样子
+map panel setting
+
+如果选择 terms_stats 模式，就会和 histogram 面板一样出现需要填写 value_field 的位置。同样必须使用在 Elasticsearch 中是数值类型的字段，然后显示的地图上，就不再是个数而是具体的均值，最大值等数据了。+
+
+
+bettermap
+
+状态：实验性
+Bettermap 之所以叫 bettermap 是因为还没有更好(better)的名字。Bettermap 使用地理坐标来在地图上创建标记集群，然后根据集群的密度，用橘色，黄色和绿色作为区分。
+要查看细节，点击标记集群。地图会放大，原有集群分裂成更小的集群。一直小到没法成为集群的时候，单个标记就会显现出来。悬停在标记上可以查看 tooltip 设置的值。
+注意: bettermap 需要从互联网上下载它的地图面板文件。
+参数
+
+field
+包含了地理坐标的字段，要求是 geojson 格式。GeoJSON 是一个数组，内容为 [longitude,latitude] 。这可能跟大多数实现([latitude, longitude])是反过来的。
+size
+
+用来绘制地图的数据集大小。默认是 1000。注意：table panel 默认是展示最近 500 条，跟这里的大小不一致，可能引起误解。
+spyable
+设为假，不显示审查(inspect)按钮。
+tooltip
+悬停在标记上时显示哪个字段。
+provider
+选择哪家地图提供商。
+请求(queries)
+请求对象
+
+这个对象描述本面板使用的请求。
+queries.mode
+在可用请求中应该用哪些？可设选项有：all, pinned, unpinned, selected
+queries.ids
+如果设为 selected 模式，具体被选的请求编号。
+界面配置说明
+
+bettermap 面板是为了解决 map 面板地图种类太少且不方便大批量添加各国地图文件的问题开发的。它采用了 leaflet 库，其 L.tileLayer 加载的 OpenStreetMap 地图文件都是在使用的时候单独请求下载，所以在初次使用的时候会需要一点时间才能正确显示。
+在 bettermap 的配置界面，我提供了 provider ，可以选择各种地图提供商。比如中文用户可以选择 GaoDe(高德地图)：
+leaflet chinese
+
+注：最近，高德地图的 API 出现问题，该 provider 已经无法使用。
+其他
+
+leaflet 库有丰富的插件资源。比如
+热力图
+leaflet heap
+
+注：热力图插件最终在 Kibana4.1 中，作为 tile map 的新 option 加入了。+
+
+
+
+terms
+
+状态：稳定
+基于 Elasticsearch 的 terms facet 接口数据展现表格，条带图，或者饼图。
+参数
+
+field
+用于计算 facet 的字段名称。
+script
+用于提交 facet 的 scriptField 脚本字符串。系我的 fork 中新增的功能，仅在 fmode 为 script 时生效。
+exclude
+要从结果数据中排除掉的 terms
+missing
+设为假，就可以不显示数据集内有多少结果没有你指定的字段。
+other
+设为假，就可以不显示聚合结果在你的 size 属性设定范围以外的总计数值。
+size
+
+显示多少个 terms
+order
+terms 模式可以设置：count, term, reverse_count 或者 reverse_term；terms_stats 模式可以设置：term, reverse_term, count, reverse_count, total, reverse_total, min, reverse_min, max, reverse_max, mean 或者 reverse_mean
+donut
+在饼图(pie)模式，在饼中画个圈，变成甜甜圈样式。
+tilt
+
+在饼图(pie)模式，倾斜饼变成椭圆形。
+lables
+在饼图(pie)模式，在饼图分片上绘制标签。
+arrangement
+在条带(bar)或者饼图(pie)模式，图例的摆放方向。可以设置：水平(horizontal)或者垂直(vertical)。
+chart
+可以设置：table, bar 或者 pie
+counter_pos
+图例相对于图的位置，可以设置：上(above)，下(below)，或者不显示(none)。
+spyable
+设为假，不显示审查(inspect)按钮。
+请求(queries)
+请求对象
+
+这个对象描述本面板使用的请求。
+queries.mode
+在可用请求中应该用哪些？可设选项有：all, pinned, unpinned, selected
+queries.ids
+如果设为 selected 模式，具体被选的请求编号。
+tmode
+Facet 模式：terms 或者 terms_stats。
+fmode
+Field 模式：normal 或者 script。我的 fork 中新增参数，normal 行为和原版一致，选择 script 时，scriptField 参数生效。
+tstat
+Terms_stats facet stats 字段。
+valuefield
+Terms_stats facet value 字段。
+界面配置说明
+
+terms 面板是针对单项数据做聚合统计的面板。可配置项比较简单：
+
+
+主要分为两部分，数据模式和显示风格。
+数据模式
+
+terms 面板能够使用两种数据模式(也是 Kibana 大多数面板所使用的)：
+terms
+terms 即普通的分类计数(类比为 group by 语法)。填写具体字段名即可。此外，排序(order by)和结果数(limit)也可以定义，具体选项介绍见本页前半部分。
+terms_stats
+terms_stats 在 terms 的基础上，获取另一个数值类型字段的统计值作为显示内容。可选的统计值有：count, total_count, min, max, total, mean。最常用的就是 mean。
+显示风格
+
+terms 面板可以使用多个风格来显示数据。
+bar
+
+
+pie
+
+
+这时候可能就会觉得这个 "other value" 太大了，又不关心它。那么可以在配置里去掉 other 的勾选。图形会变成这样：
+
+
+如果勾选 "donut"，则可以看到圈圈饼效果：
+
+
+table
+如果你是个对数字敏感的人，或者主要数据差距不大，通过 bar 或者 pie 方式不是很明显，那么看表格最好了：
+
+
+注意这个表格只有单列数据，使用配置里定义的排序，不像 table 面板。
+如果你需要同时看多种统计数据，则应该使用 stats 面板。
+script field
+
+在 fmode 选择 script 的时候，可以填写 script 脚本字符串获取脚本化字段结果做聚合。
+在 scriptField 输入框中输入
+doc['path.raw'].value
+的时候，效果完全等价于直接在 Field 输入框中输入
+path.raw
+因为 script 和 analyzer 的次序关系，务必使用带有 "not_analyzed" 属性的字段。否则一条数据中只会有一个分词结果参与后续聚合运算。
+支持的 script 语法，请参阅 ES 官方文档：http://www.elasticsearch.org/guide/en/elasticsearch/reference/3.0/modules-scripting.html#_document_fields
+需要注意的是，出于安全考虑，ES 1.4 以下 大多建议关闭动态脚本运行的支持；在 1.4 新增了沙箱运行并设置为默认。所以，建议在 ES 1.4 的前提下使用该特性。+
+
+
+
+column
+
+状态：稳定
+这是一个伪面板。目的是让你在一列中添加多个其他面板。虽然 column 面板状态是稳定，它的限制还是很多的，比如不能拖拽内部的小面板。未来的版本里，column 面板可能被删除。
+参数
+
+panel
+面板对象构成的数组
+界面配置说明
+
+column 面板是为了在高度较大的 row 中放入多个小 panel 准备的一个容器。其本身配置界面和 row 类似只有一个 panel 列表：
+
+
+在 column 中的具体的面板本身的设定，需要点击面板自带的配置按钮来配置：+
+
+
+
+stats
+
+状态: Beta
+基于 Elasticsearch 的 statistical Facet 接口实现的统计聚合展示面板。
+参数
+
+format
+返回值的格式。默认是 number，可选值还有：money，bytes，float。
+style
+主数字的显示大小，默认为 24pt。
+mode
+
+用来做主数字显示的聚合值，默认是 count，可选值为：count(计数)，min(最小值)，max(最大值)，mean(平均值)，total(总数)，variance(方差)，std_deviation(标准差)，sum_of_squares(平方和)。
+show
+
+统计表格中具体展示的哪些列。默认为全部展示，可选列名即 mode 中的可选值。
+spyable
+设为假，不显示审查(inspect)按钮。
+请求
+
+请求对象
+
+这个对象描述本面板使用的请求。
+queries.mode
+在可用请求中应该用哪些？可设选项有：all, pinned, unpinned, selected
+queries.ids
+如果设为 selected 模式，具体被选的请求编号。+
+
+
+query
+
+query 面板和 filter 面板都是特殊类型的面板，在 dashboard 上有且仅有一个。不能删除不能添加。
+query 和 filter 的普通样式和基本操作，在之前 Query 和 Filtering 章节已经讲述过。这里，额外讲一下一些高阶功能。
+请求类型
+
+query 搜索框支持三种请求类型：
+lucene
+这也是默认的类型，使用要点就是请求语法。语法说明在之前 Elasticsearch 一章已经讲过。
+regex
+topN
+
+topN 是一个方便大家进行多项对比搜索的功能。其配置界面如下：
+
+
+注意 topN 后颜色选择器的小圆点变成了齿轮状！
+其运行实质，是先根据你填写的 field 和 size，发起一次 termsFacet 查询，获取 topN 的 term 结果；然后拿着这个列表，逐一发起附加了 term 条件的其他请求(比如绑定在 histogram 面板就是 date_histogram 请求，stats 面板就是 termStats 请求)，也就获得了 topN 结果。
+
+
+小贴士：如果 ES 响应较慢的时候，你甚至可以很明显的看到 histogram 面板上的多条曲线是一条一条出来数据绘制的。
+别名
+
+query 还可以设置别名(alias)。默认没有别名的时候，各 panel 上显示对应 query 时，会使用具体的 query 语句。在查询比较复杂的时候，不便观看。而设置别名后，pinned queries，panel 图例等处，都会只显示设置好的别名，而不再显示复杂的查询语句，这样一目了然。+
+
+
+
+trends
+
+状态: Beta
+以证券报价器风格展示请求随着时间移动的情况。比如说：当前时间是 1:10pm，你的时间选择器设置的是 "Last 10m"，而本面板的 "Time Ago" 参数设置的是 "1h"，那么面板会显示的是请求结果从 12:00-12:10pm 以来变化了多少。
+参数
+
+ago
+
+描述需要对比请求的时期的时间数值型字符串。
+arrangement
+‘horizontal’ 或 ‘vertical’
+spyable
+设为假，不显示审查(inspect)按钮。
+请求(queries)
+请求对象
+
+这个对象描述本面板使用的请求。
+queries.mode
+在可用请求中应该用哪些？可设选项有：all, pinned, unpinned, selected
+queries.ids
+如果设为 selected 模式，具体被选的请求编号。
+界面配置说明
+
+trends 面板用来对比实时数据与过去某天的同期数据的量的变化。配置很简单，就是设置具体某天前：+
+
+
+文本(text)
+
+状态：稳定
+文本面板用来显示静态文本内容，支持 markdown，简单的 html 和纯文本格式。
+参数
+
+mode
+
+‘html’, ‘markdown’ 或者 ‘text’
+content
+面板内容，用 mode 参数指定的标记语言书写+
+
+
+sparklines
+
+状态: 试验性
+sparklines 面板显示微型时间图。目的不是显示一个确切的数值，而是以紧凑的方式显示时间序列的形态。
+参数
+
+mode 用作 Y 轴的数值模式。除 count 以外，都需要定义 value_field 字段。可选值有：count, mean, max, min, total.
+time_field X 轴字段。必须是 Elasticsearch 中的时间类型字段。
+value_field 如果 mode 设置为 mean, max, min 或者 total，Y 轴字段。必须是数值类型字段。
+interval 如果有现成的时间过滤器，Sparkline 会自动计算间隔。如果没有，就用这个间隔。默认是 5 分钟。
+spyable 显示 inspect 图标。
+请求(queries)
+请求对象 这个对象描述本面板使用的请求。
+queries.mode 在可用请求中应该用哪些？可设选项有：all, pinned, unpinned, selected
+queries.ids 如果设为 selected 模式，具体被选的请求编号。
+界面配置说明
+
+sparklines 面板其实就是 histogram 面板的缩略图模式。在配置上，只能选择 Chart value 模式，填写 Time Field 或者 Value Field 字段。上文描述中的 interval 在配置页面上是看不到的。
+
+
+我们可以对比一下对同一个 topN 请求绘制的 sparklines 和 histogram 面板的效果：
+sparklines
+
+
+histogram
+
+
+
+hits
+
+状态: 稳定
+hits 面板显示仪表板上每个请求的 hits 数，具体的显示格式可以通过 "chart" 属性配置指定。
+参数
+
+arrangement
+在条带(bar)或者饼图(pie)模式，图例的摆放方向。可以设置：水平(horizontal)或者垂直(vertical)。
+chart
+可以设置：none, bar 或者 pie
+counter_pos
+图例相对于图的位置，可以设置：上(above)，下(below)
+donut
+在饼图(pie)模式，在饼中画个圈，变成甜甜圈样式。
+tilt
+
+在饼图(pie)模式，倾斜饼变成椭圆形。
+lables
+在饼图(pie)模式，在饼图分片上绘制标签。
+spyable
+设为假，不显示审查(inspect)图标。
+请求(queries)
+请求对象
+
+这个对象描述本面板使用的请求。
+queries.mode
+在可用请求中应该用哪些？可设选项有：all, pinned, unpinned, selected
+queries.ids
+如果设为 selected 模式，具体被选的请求编号。+
+
+
+
+
+goal
+
+状态: 稳定
+goal 面板在一个饼图上显示到达指定目标的进度。
+参数
+
+donut
+在饼图(pie)模式，在饼中画个圈，变成甜甜圈样式。
+tilt
+
+在饼图(pie)模式，倾斜饼变成椭圆形。
+legend
+图例的位置，上、下或者无。
+lables
+在饼图(pie)模式，在饼图分片上绘制标签。
+spyable
+设为假，不显示审查(inspect)图标。
+请求(queries)
+请求对象
+
+query.goal
+goal 模式的指定目标+
+
+
+
+
+仪表板纲要
+
+Kibana 仪表板可以很容易的在浏览器中创建出来，而且绝大多数情况下，浏览器已经足够支持你创建一个很有用很丰富的节目了。不过，当你真的需要一点小修改的时候，Kibana 也可以让你直接编辑仪表板的纲要。
+注意：本节内容只针对高级用户。JSON 语法非常严格，多一个逗号，少一个大括号，都会导致你的仪表板无法加载。
+image
+
+我们会用上面这个仪表板作为示例。你可以导出任意的仪表板纲要，点击右上角的保存按钮，指向高级(Advanced)菜单，然后点击导出纲要(Export Schema)。示例使用的纲要文件可以在这里下载： schema.json
+因为仪表板是由特别长的 JSON 文档组成的，我们只能分成一段段的内容，分别介绍每段的作用和目的。
+和所有的 JSON 文档一样，都是以一个大括号开始的。
+{
+服务(services)
+
+  "services": {
+服务(Services)是被多个面板使用的持久化对象。目前仪表板对象附加有 2 种服务对象，不指明的话，就会自动填充成请求(query)和过滤(filter)服务了。
+Query
+Filter
+query
+    "query": {
+      "list": {
+        "0": {
+          "query": "play_name:\"Romeo and Juliet\"",
+          "alias": "",
+          "color": "#7EB26D",
+          "id": 0,
+          "pin": false,
+          "type": "lucene",
+          "enable": true
+        }
+      },
+      "ids": [
+        0
+      ]
+    },
+请求服务主要是由仪表板顶部的请求栏控制的。有两个属性：
+List: 一个以数字为键的对象。每个值描述一个请求对象。请求对象的键命名一目了然，就是描述请求输入框的外观和行为的。
+Ids: 一个由 ID 组成的数组。每个 ID 都对应前面 list 对象的键。 ids 数组用来保证显示时 list 的排序问题。
+filter
+    "filter": {
+      "list": {
+        "0": {
+          "type": "querystring",
+          "query": "speaker:ROMEO",
+          "mandate": "must",
+          "active": true,
+          "alias": "",
+          "id": 0
+        }
+      },
+      "ids": [
+        0
+      ]
+    }
+  },
+过滤的行为和请求很像，不过过滤不能在面板级别选择，而是对全仪表板生效。过滤对象和请求对象一样有 list 和 ids 两个属性，各属性的行为和请求对象也一样。
+垂幕(pulldown)
+
+  "pulldowns": [
+垂幕是一种特殊的面板。或者说，是一个特殊的可以用来放面板的地方。在垂幕里的面板就跟在行里的一样，区别就是不能设置 span 宽度。垂幕里的面板永远都是全屏宽度。此外，垂幕里的面板也不可以吧被使用者移动或编辑。所以垂幕特别适合放置输入框。垂幕的属性是一个由面板对象构成的数组。关于特定的面板，请阅读 Kibana Panels
+    {
+      "type": "query",
+      "collapse": false,
+      "notice": false,
+      "enable": true,
+      "query": "*",
+      "pinned": true,
+      "history": [
+        "play_name:\"Romeo and Juliet\"",
+        "playname:\"Romeo and Juliet\"",
+        "romeo"
+      ],
+      "remember": 10
+    },
+    {
+      "type": "filtering",
+      "collapse": false,
+      "notice": true,
+      "enable": true
+    }
+  ],
+垂幕面板有 2 个普通行面板没有的选项：
+Collapse: 设置为真假值，代表着面板被折叠还是展开。
+Notice: 面板设置这个值，控制在垂幕的标签主题上出现一个小星星。用来通知使用者，这个面板里发生变动了。
+导航(nav)
+
+nav 属性里也有一个面板列表，只是这些面板是被用来填充在页首导航栏里德。目前唯一支持导航的面板是时间选择器(timepicker)
+  "nav": [
+    {
+      "type": "timepicker",
+      "collapse": false,
+      "notice": false,
+      "enable": true,
+      "status": "Stable",
+      "time_options": [
+        "5m",
+        "15m",
+        "1h",
+        "6h",
+        "12h",
+        "24h",
+        "2d",
+        "7d",
+        "30d"
+      ],
+      "refresh_intervals": [
+        "5s",
+        "10s",
+        "30s",
+        "1m",
+        "5m",
+        "15m",
+        "30m",
+        "1h",
+        "2h",
+        "1d"
+      ],
+      "timefield": "@timestamp"
+    }
+  ],
+loader
+
+loader 属性描述了仪表板顶部的保存和加载按钮的行为。
+  "loader": {
+    "save_gist": false,
+    "save_elasticsearch": true,
+    "save_local": true,
+    "save_default": true,
+    "save_temp": true,
+    "save_temp_ttl_enable": true,
+    "save_temp_ttl": "30d",
+    "load_gist": false,
+    "load_elasticsearch": true,
+    "load_elasticsearch_size": 20,
+    "load_local": false,
+    "hide": false
+  },
+行数组
+
+rows 就是通常放置面板的地方。也是唯一可以通过浏览器页面添加的位置。
+"rows": [
+    {
+      "title": "Charts",
+      "height": "150px",
+      "editable": true,
+      "collapse": false,
+      "collapsable": true,
+行对象包含了一个面板列表，以及一些行的具体参数，如下所示：
+title: 行的标题
+height: 行的高度，单位是像素，记作 px
+editable: 真假值代表面板是否可被编辑
+collapse: 真假值代表行是否被折叠
+collapsable: 真价值代表使用者是否可以折叠行
+面板数组
+
+行的 panels 数组属性包括有一个以自己出现次序排序的面板对象的列表。各特定面板本身的属性列表和说明，阅读 Kibana Panels
+      "panels": [
+        {
+          "error": false,
+          "span": 8,
+          "editable": true,
+          "type": "terms",
+          "loadingEditor": false,
+          "field": "speech_number",
+          "exclude": [],
+          "missing": false,
+          "other": false,
+          "size": 10,
+          "order": "count",
+          "style": {
+            "font-size": "10pt"
+          },
+          "donut": false,
+          "tilt": false,
+          "labels": true,
+          "arrangement": "horizontal",
+          "chart": "bar",
+          "counter_pos": "above",
+          "spyable": true,
+          "queries": {
+            "mode": "all",
+            "ids": [
+              0
+            ]
+          },
+          "tmode": "terms",
+          "tstat": "total",
+          "valuefield": "",
+          "title": "Longest Speeches"
+        },
+        {
+          "error": false,
+          "span": 4,
+          "editable": true,
+          "type": "goal",
+          "loadingEditor": false,
+          "donut": true,
+          "tilt": false,
+          "legend": "none",
+          "labels": true,
+          "spyable": true,
+          "query": {
+            "goal": 111397
+          },
+          "queries": {
+            "mode": "all",
+            "ids": [
+              0
+            ]
+          },
+          "title": "Percentage of Total"
+        }
+      ]
+    }
+  ],
+索引设置
+
+索引属性包括了 Kibana 交互的 Elasticsearch 索引的信息。
+  "index": {
+    "interval": "none",
+    "default": "_all",
+    "pattern": "[logstash-]YYYY.MM.DD",
+    "warm_fields": false
+  },
+interval: none, hour, day, week, month。这个属性描述了索引所遵循的时间间隔模式。
+default: 如果 interval 被设置为 none，或者后面的 failover 设置为 true 而且没有索引能匹配上正则模式的话，搜索这里设置的索引。
+pattern: 如果 interval 被设置成除了 none 以外的其他值，就需要解析这里设置的模式，启用时间过滤规则，来确定请求哪些索引。
+warm_fields: 是否需要解析映射表来确定字段列表。
+其余
+
+下面四个也是顶层的仪表板配置项
+  "failover": false,
+  "editable": true,
+  "style": "dark",
+  "refresh": false
+}
+failover: 真假值，确定在没有匹配上索引模板的时候是否使用 index.default。
+editable: 真假值，确定是否在仪表板上显示配置按钮。
+style: "亮色(light)" 或者 "暗色(dark)"
+refresh: 可以设置为 "false" 或者其他 elasticsearch 支持的时间表达式(比如 10s, 1m, 1h)，用来描述多久触发一次面板的数据更新。
+导入纲要
+
+默认是不能导入纲要的。不过在仪表板配置屏的控制(Controls)标签里可以开启这个功能，启用 "Local file" 选项即可。然后通过仪表板右上角加载图标的高级设置，选择导入文件，就可以导入纲要了。
+
+
+
+模板和脚本
+
+Kibana 支持通过模板或者更高级的脚本来动态的创建仪表板。你先创建一个基础的仪表板，然后通过参数来改变它，比如通过 URL 插入一个新的请求或者过滤规则。
+模板和脚本都必须存储在磁盘上，目前不支持存储在 Elasticsearch 里。同时它们也必须是通过编辑或创建纲要生成的。所以我们强烈建议阅读 The Kibana Schema Explained
+仪表板目录
+
+仪表板存储在 Kibana 安装目录里的 app/dashboards 子目录里。你会注意到这里面有两种文件：.json 文件和 .js 文件。
+模板化仪表板(.json)
+
+.json 文件就是模板化的仪表板。模板示例可以在 logstash.json 仪表板的请求和过滤对象里找到。模板使用 handlebars 语法，可以让你在 json 里插入 javascript 语句。URL 参数存在 ARGS 对象中。下面是 logstash.json(on github) 里请求和过滤服务的代码片段：
+  "0": {
+    "query": "{{ARGS.query || '*'}}",
+    "alias": "",
+    "color": "#7EB26D",
+    "id": 0,
+    "pin": false
+  }
+
+  [...]
+
+  "0": {
+    "type": "time",
+    "field": "@timestamp",
+    "from": "now-{{ARGS.from || '24h'}}",
+    "to": "now",
+    "mandate": "must",
+    "active": true,
+    "alias": "",
+    "id": 0
+  }
+这允许我们在 URL 里设置两个参数，query 和 from。如果没设置，默认值就是 || 后面的内容。比如说，下面的 URL 就会搜索过去 7 天内 status:200 的数据：
+注意：千万注意 url #/dashboard/file/logstash.json 里的 file 字样
+http://yourserver/index.html#/dashboard/file/logstash.json?query=status:200&from=7d
+
+
+
+脚本化仪表板(.js)
+
+脚本化仪表板比模板化仪表板更加强大。当然，功能强大随之而来的就是构建起来也更复杂。脚本化仪表板的目的就是构建并返回一个描述了完整的仪表板纲要的 javascript 对象。app/dashboards/logstash.js(on github) 就是一个有着详细注释的脚本化仪表板示例。这个文件的最终结果和 logstash.json 一致，但提供了更强大的功能，比如我们可以以逗号分割多个请求：
+注意：千万注意 URL #/dashboard/script/logstash.js 里的 script 字样。这让 kibana 解析对应的文件为 javascript 脚本。
+http://yourserver/index.html#/dashboard/script/logstash.js?query=status:403,status:404&from=7d
+这会创建 2 个请求对象，status:403 和 status:404 并分别绘图。事实上这个仪表板还能接收另一个参数 split，用于指定用什么字符串切分。
+http://yourserver/index.html#/dashboard/script/logstash.js?query=status:403!status:404&from=7d&split=!
+我们可以看到 logstash.js (on github) 里是这么做的：
+// In this dashboard we let users pass queries as comma separated list to the query parameter.
+// Or they can specify a split character using the split aparameter
+// If query is defined, split it into a list of query objects
+// NOTE: ids must be integers, hence the parseInt()s
+if(!_.isUndefined(ARGS.query)) {
+  queries = _.object(_.map(ARGS.query.split(ARGS.split||','), function(v,k) {
+    return [k,{
+      query: v,
+      id: parseInt(k,10),
+      alias: v
+    }];
+  }));
+} else {
+  // No queries passed? Initialize a single query to match everything
+  queries = {
+    0: {
+      query: '*',
+      id: 0,
+    }
+  };
+}
+该仪表板可用参数比上面讲述的还要多，全部参数都在 logstash.js(on github) 文件里开始的注释中有讲解。+
+
+
+nginx 代理和简单权限验证
+
+Kibana3 作为一个纯静态文件式的单页应用，可以运行在任意主机上，却要求所有用户的浏览器，都可以直连 ELasticsearch 集群。这对网络和数据安全都是极为不利的。所以，一般在生产环境的 ELK Stack，都是采取 HTTP 代理层的方式来做一层防护。最简单的办法，就是使用 Nginx 代理配置。
+ES 官方也提供了一个推荐配置：https://github.com/elastic/kibana/blob/3.0/sample/nginx.conf
+server {
+  listen                *:80;
+
+  server_name           kibana.myhost.org;
+  access_log            /var/log/nginx/kibana.myhost.org.access.log;
+
+  location / {
+    root  /usr/share/kibana3;
+    index  index.html  index.htm;
+  }
+
+  location ~ ^/_aliases$ {
+    proxy_pass http://127.0.0.1:9200;
+    proxy_read_timeout 90;
+  }
+  location ~ ^/.*/_aliases$ {
+    proxy_pass http://127.0.0.1:9200;
+    proxy_read_timeout 90;
+  }
+  location ~ ^/_nodes$ {
+    proxy_pass http://127.0.0.1:9200;
+    proxy_read_timeout 90;
+  }
+  location ~ ^/.*/_search$ {
+    proxy_pass http://127.0.0.1:9200;
+    proxy_read_timeout 90;
+  }
+  location ~ ^/.*/_mapping {
+    proxy_pass http://127.0.0.1:9200;
+    proxy_read_timeout 90;
+  }
+
+  # Password protected end points
+  location ~ ^/kibana-int/dashboard/.*$ {
+    proxy_pass http://127.0.0.1:9200;
+    proxy_read_timeout 90;
+    limit_except GET {
+      proxy_pass http://127.0.0.1:9200;
+      auth_basic "Restricted";
+      auth_basic_user_file /etc/nginx/conf.d/kibana.myhost.org.htpasswd;
+    }
+  }
+  location ~ ^/kibana-int/temp.*$ {
+    proxy_pass http://127.0.0.1:9200;
+    proxy_read_timeout 90;
+    limit_except GET {
+      proxy_pass http://127.0.0.1:9200;
+      auth_basic "Restricted";
+      auth_basic_user_file /etc/nginx/conf.d/kibana.myhost.org.htpasswd;
+    }
+  }
+}
+由此也可以看到，Kibana3 实际往 ES 发起的请求，都有哪些。
+然后，在同时运行了 Nginx 和 Elasticsearch 服务(建议为 client 角色)的这台服务器上，配置 elasticsearch.yml 为：
+network.bind_host: 127.0.0.1
+network.publish_host: 127.0.0.1
+network.host: 127.0.0.1
+其他 Elasticsearch 节点统一关闭 HTTP 服务，配置 elasticsearch.yml:
+http.enabled: false
+这样，所有人都只能从 Nginx 服务来查询 ES 服务了。从 Nginx 日志中，我们还可以审核查询请求的语法性能和合理性。
+注意：改配置前提是 Logstash 采用 node/transport 协议写入数据，如果使用 http 协议的，请采用 iptables 防护，或新增 /_bulk 等写入接口的代理配置。+
+
+
+配置Kibana的CAS验证
+
+本节作者：childe
+我们公司用的是 CAS 单点登陆, 用如下工具将kibana集成到此单点登陆系统
+准备工具
+
+nginx: 仅仅是为了记录日志, 不用也行
+nodejs: 为了跑 kibana-authentication-proxy
+kibana: https://github.com/elasticsearch/kibana
+kibana-authentication-proxy: https://github.com/fangli/kibana-authentication-proxy
+配置
+
+nginx 配置 8080 端口, 反向代理到 es 的 9200
+git clone kibana-authentication-proxy
+git clone kibana
+将 kibana 软链接到 kibana-authentication-proxy 目录下
+配置 kibana-authentication-proxy/config.js
+可能有如下参数需要调整:
+es_host      #这里是nginx地址
+es_port       #nginx的8080
+listen_port      #node的监听端口, 80
+listen_host     #node的绑定IP, 可以0.0.0.0
+cas_server_url  #CAS地址
+安装 kibana-authentication-proxy 的依赖, npm install express, 等
+运行 node kibana-authentication-proxy/app.js
+原理
+
+app.js 里面 app.get('/config.js', kibana3configjs); 返回了一个新的 config.js, 不是用的 kibana/config.js, 在这个配置里面,调用 ES 数据的 URL 前面加了一个 __es 的前缀
+在 app.js 入口这里, 有两个关键的中间层(我也不知道叫什么)被注册: 一个是 configureCas, 一个是configureESProxy
+一个请求来的时候, 会到 configureCas 判断是不是已经登陆到 CAS, 没有的话就转到 cas 登陆页面
+configureESProxy 在 lib/es-proxy.js 里, 会把 __es 打头的请求(其实就是请求 es 数据的请求)转发到真正的 es 接口那里(我们这里是 nginx)
+请求路径
+
+node(80) <=> nginx(8080) <=> es(9200)
+kibana-authentication-proxy 本身没有记录日志的代码, 而且转发 es 请求用的流式的(看起来), 并不能记录详细的 request body. 所以我们就用 nginx 又代理一层做日志了..+
+
+
+Auth WebUI in Mojolicious
+
+社区已经有用 nodejs 或者 rubyonrails 写的 kibana-auth 方案了。不过我这两种语言都不太擅长，只会写一点点 Perl5 代码，所以我选择用 Mojolicious web 开发框架来实现我自己的 kibana 认证鉴权。
+整套方案的代码以 kbnauth 子目录形式存在于我的 kibana 仓库中，如果你不想用这套认证方案，照旧使用 src 子目录即可。事实上，kbnauth/public/ 目录下的静态文件我都是通过软连接方式指到 src/下的。
+特性
+
+全局透明代理
+和 nodejs 实现的那套方案不同，我这里并没有使用 __es/ 这样附加的路径。所有发往 Elasticsearch 的请求都是通过这个方案来控制。除了使用 config.js.ep 模版来定制 elasticsearch 地址设置以外，方案还会伪造 /_nodes 请求的响应体，伪造的响应体中永远只有运行着认证方案的这台服务器的 IP 地址。
+这么做的原因是我的 kibana 升级了 elasticjs 版本，新版本默认会通过这个 API 获取 nodes 列表，然后浏览器直接轮询多个 IP 获取响应。
+注意：Mojolicious 有一个环境变量叫 max_message_size，默认是 10MB，即只允许代理响应大小在 10MB 以内的数据。我在 script/kbnauth 启动脚本中把它修改成了 0，即不限制。如果你有这方面的需求，可以修改成任意你想要的阈值。
+使用 kibana-auth elasticsearch 索引做鉴权
+因为所有的请求都会发往代理服务器(即运行着认证鉴权方案的服务器)，每个用户都可以有自己的仪表板空间(没错，这招是从 kibana-proxy 项目学来的，每个用户使用单独的 kibana-int-$username 索引保存自己的仪表板设置)。而本方案还提供另一个高级功能：还可以通过另一个新的索引 kibana-auth 来指定每个用户所能访问的 Elasticsearch 集群地址和索引列表。
+给用户 "sri" 添加鉴权信息的命令如下：
+$ curl -XPOST http://127.0.0.1:9200/kibana-auth/indices/sri -d '{
+  "prefix":["logstash-sri","logstash-ops"],
+  "server":"192.168.0.2:9200"
+}'
+这就意味着用户 "sri" 能访问的，是存在 "192.168.0.2:9200" 上的 "logstash-sri-YYYY.MM.dd" 或者 "logstash-ops-YYYY.MM.dd" 索引。
+小贴士：所以你在 kbn_auth.conf 里配置的 eshost/esport，其实并不意味着 kibana 数据的来源，而是认证方案用来请求 kibana-auth 信息的地址！
+使用 Authen::Simple 框架做认证
+Authen::Simple 是一个很棒的认证框架，支持非常多的认证方法。比如：LDAP, DBI, SSH, Kerberos, PAM, SMB, NIS, PAM, ActiveDirectory 等。
+默认使用的是 Passwd 方法。也就是用 htpasswd 命令行在本地生成一个 .htpasswd 文件存用户名密码。
+如果要使用其他方法，比如用 LDAP 认证，只需要配置 kbn_auth.conf 文件就行了：
+  authen => {
+    LDAP => {
+      host   => 'ad.company.com',
+      binddn => 'proxyuser@company.com',
+      bindpw => 'secret',
+      basedn => 'cn=users,dc=company,dc=com',
+      filter => '(&(objectClass=organizationalPerson)(objectClass=user)(sAMAccountName=%s))'
+    },
+  }
+可以同时使用多种认证方式，但请确保每种都是有效可用的。某一个认证服务器连接超时也会影响到其他认证方式超时。
+安装
+
+该方案代码只有两个依赖：Mojolicious 框架和 Authen::Simple 框架。我们可以通过 cpanm 部署：
+curl http://xrl.us/cpanm -o /usr/local/bin/cpanm
+chmod +x /usr/local/bin/cpanm
+cpanm Mojolicious Authen::Simple::Passwd
+如果你需要使用其他认证方法，每个方法都需要另外单独安装。比如使用 LDAP 部署，就再运行一行：cpanm Authen::Simple::LDAP 就可以了。
+小贴士：如果你是在一个新 RHEL 系统上初次运行代码，你可能会发现有报错说找不到 Digest::SHA 模块。这个模块其实是 Perl 核心模块，但是 RedHat 公司把所有的 Perl 核心模块单独打包成了 perl-core.rpm，所以你得先运行一下 yum install -y perl-core 才行。我讨厌 RedHat！
+运行
+
+cd kbnauth
+# 开发环境监听 3000 端口，使用单进程的 morbo 服务器调试
+morbo script/kbnauth
+# 生产环境监听 80 端口，使用高性能的 hypnotoad 服务器, 具体端口在 kbn_auth.conf 中定义
+hypnotoad script/kbnauth
+现在，打开浏览器，就可以通过默认的用户名/密码："sri/secr3t" 登录进去了。(sri 是 Mojolicious 框架的作者，感谢他为 Perl5 社区提供这么高效的 web 开发框架)
+注意：这时候你虽然认证通过进去了 kibana 页面，但是还没有赋权。按照上面提到的 kibana-auth 命令操作，才算全部完成。+
+
+
+
+
+
+入口和模块依赖
+
+这一部分是网页项目的基础。从 index.html 里就可以学到 angularjs 最基础的常用模板语法了。出现的指令有：ng-repeat, ng-controller, ng-include, ng-view, ng-slow, ng-click, ng-href，以及变量绑定的语法：{{ dashboard.current.** }}。
+index.html 中，需要注意 js 的加载次序，先 require.js，然后再 require.config.js，最后 app。整个 kibana 项目都是通过 requrie 方式加载的。而具体的模块，和模块的依赖关系，则定义在 require.config.js 里。这些全部加载完成后，才是启动 app 模块，也就是项目本身的代码。
+require.config.js 中，主要分成两部分配置，一个是 paths，一个是 shim。paths 用来指定依赖模块的导出名称和模块 js 文件的具体路径。而 shim 用来指定依赖模块之间的依赖关系。比方说：绘制图表的 js，kibana3 里用的是 jquery.flot 库。这个就首先依赖于 jquery 库。(通俗的说，就是原先普通的 HTML 写法里，要先加载 jquery.js 再加载 jquery.flot.js)
+在整个 paths 中，需要单独提一下的是 elasticjs:'../vendor/elasticjs/elastic-angular-client'。这是串联 elastic.js 和 angular.js 的文件。这里面实际是定义了一个 angular.module 的 factory，名叫 ejsResource。后续我们在 kibana 3 里用到的跟 Elasticsearch 交互的所有方法，都在这个 ejsResource 里了。
+factory 是 angular 的一个单例对象，创建之后会持续到你关闭浏览器。Kibana 3 就是通过这种方式来控制你所有的图表是从同一个 Elasticsearch 获取的数据
+app.js 中，定义了整个应用的 routes，加载了 controller, directives 和 filters 里的全部内容。就是在这里，加载了主页面 app/partials/dashboard.html。当然，这个页面其实没啥看头，因为里面就是提供 pulldown 和 row 的 div，然后绑定到对应的 controller 上。+
+
+
+
+controller 和 service
+
+controller 里没太多可讲的。kibana 3 里，pulldown 其实跟 row 差别不大，看这简单的几行代码里，最关键的就是几个注入：
+define(['angular','app','lodash'], function (angular, app, _) {
+  'use strict';
+  angular.module('kibana.controllers').controller('RowCtrl', function($scope, $rootScope, $timeout,ejsResource, querySrv) {
+      var _d = {
+        title: "Row",
+        height: "150px",
+        collapse: false,
+        collapsable: true,
+        editable: true,
+        panels: [],
+        notice: false
+      };
+      _.defaults($scope.row,_d);
+
+      $scope.init = function() {
+        $scope.querySrv = querySrv;
+        $scope.reset_panel();
+      };
+      $scope.init();
+    }
+  );
+});
+这里面，注入了 $scope, ejsResource 和 querySrv。$scope 是控制器作用域内的模型数据对象，这是 angular 提供的一个特殊变量。ejsResource 是一个 factory ，前面已经讲过。querySrv 是一个 service，下面说一下。
+service 跟 factory 的概念非常类似，一般来说，可能 factory 偏向用来共享一个类，而 service 用来共享一组函数功能。
+kibana 3 里，比较有用和常用的 services 包括：
+dashboard
+
+dashboard.js 里提供了关于 Kibana 3 仪表板的读写操作。其中主要的几个是提供了三种读取仪表板布局纲要的方式，也就是读取文件，读取存在 .kibana-int 索引里的数据，读取 js 脚本。下面是读取 js 脚本的相关函数：
+    this.script_load = function(file) {
+      return $http({
+        url: "app/dashboards/"+file.replace(/\.(?!js)/,"/"),
+        method: "GET",
+        transformResponse: function(response) {
+          /*jshint -W054 */
+          var _f = new Function('ARGS','kbn','_','moment','window','document','angular','require','define','$','jQuery',response);
+          return _f($routeParams,kbn,_,moment);
+        }
+      }).then(function(result) {
+        if(!result) {
+          return false;
+        }
+        self.dash_load(dash_defaults(result.data));
+        return true;
+      },function() {
+        alertSrv.set('Error',
+          "Could not load <i>scripts/"+file+"</i>. Please make sure it exists and returns a valid dashboard" ,
+          'error');
+        return false;
+      });
+    };
+可以看到，最关键的就是那个 new Function。知道这步传了哪些函数进去，也就知道你的 js 脚本里都可以调用哪些内容了~
+最后调用的 dash_load 方法也需要提一下。这个方法的最后，有几行这样的代码：
+      self.availablePanels = _.difference(config.panel_names,
+        _.pluck(_.union(self.current.nav,self.current.pulldowns),'type'));
+
+      self.availablePanels = _.difference(self.availablePanels,config.hidden_panels);
+从最外层的 config.js 里读取了 panel_names 数组，然后取出了 nav 和 pulldown 用过的 panel，剩下就是我们能在 row 里添加的 panel 类型了。
+querySrv
+
+querySrv.js 里定义了跟 query 框相关的函数和属性。主要有几个值得注意的。
+一个是 color 列表；
+一个是 queryTypes，尤其是里么的 topN，可以看到 topN 方式其实就是先请求了一次 termsFacet，然后把结果 map 成一组普通的 query。
+一个是 ids 和 idsByMode。之后图表的绑定具体 query 的时候，就是通过这个函数来选择的。
+filterSrv
+
+filterSrv.js 跟 querySrv 相似。特殊的是两个函数。
+一个是 toEjsObjs。根据不同的 filter 类型调用不同的 ejs 方法。
+一个是 timeRange。因为在 histogram panel 上拖拽，会生成好多个 range 过滤器，都是时间。这个方法会选择最后一个类型为 time 的 filter，作为实际要用的 filter。这样保证请求 ES 的是最后一次拖拽选定的时间段。
+fields
+
+fields.js 里最重要的作用就是通过 mapping 接口获取索引的字段列表，存在 fields.list 里。这个数组后来在每个 panel 的编辑页里，都以 bs-typeahead="fields.list" 的形式作为文本输入时的自动补全提示。在 table panel 里，则是左侧栏的显示来源。
+esVersion
+
+esVersion.js 里提供了对 ES 版本号的对比函数。之所以专门提供这么个 service，一来是因为不同版本的 ES 接口有变化，比如我自己开发的 percentile panel 里，就用 esVersion 判断了两次版本。因为 percentile 接口是 1.0 版之后才有，而从 1.3 版以后返回数据的结构又发生了一次变动。二来 ES 的版本号格式比较复杂，又有点又有字母。+
+
+
+
+
+panel 相关指令
+
+添加 panel
+
+前面在讲 app/services/dashboard.js 的时候，已经说到能添加的 panel 列表是怎么获取的。那么panel 是怎么加上的呢？
+同样是之前讲过的 app/partials/dashaboard.html 里，加载了 partials/roweditor.html 页面。这里有一段：
+    <form class="form-inline">
+      <select class="input-medium" ng-model="panel.type" ng-options="panelType for panelType in dashboard.availablePanels|stringSort"></select>
+      <small ng-show="rowSpan(row) > 11">
+        Note: This row is full, new panels will wrap to a new line. You should add another row.
+      </small>
+    </form>
+
+    <div ng-show="!(_.isUndefined(panel.type))">
+      <div add-panel="{{panel.type}}"></div>
+    </div>
+这个 add-panel 指令，是有 app/directives/addPanel.js 提供的。方法如下：
+          $scope.$watch('panel.type', function() {
+            var _type = $scope.panel.type;
+            $scope.reset_panel(_type);
+            if(!_.isUndefined($scope.panel.type)) {
+              $scope.panel.loadingEditor = true;
+              $scope.require(['panels/'+$scope.panel.type.replace(".","/") +'/module'], function () {
+                var template = '<div ng-controller="'+$scope.panel.type+'" ng-include="\'app/partials/paneladd.html\'"></div>';
+                elem.html($compile(angular.element(template))($scope));
+                $scope.panel.loadingEditor = false;
+              });
+            }
+          });
+可以看到，其实就是 require 了对应的 panels/xxx/module.js，然后动态生成一个 div，绑定到对应的 controller 上。
+展示 panel
+
+还是在 app/partials/dashaboard.html 里，用到了另一个指令 kibana-panel：
+            <div
+              ng-repeat="(name, panel) in row.panels|filter:isPanel"
+              ng-cloak ng-hide="panel.hide"
+              kibana-panel type='panel.type' resizable
+              class="panel nospace" ng-class="{'dragInProgress':dashboard.panelDragging}"
+              style="position:relative"  ng-style="{'width':!panel.span?'100%':((panel.span/1.2)*10)+'%'}"
+              data-drop="true" ng-model="row.panels" data-jqyoui-options
+              jqyoui-droppable="{index:$index,mutate:false,onDrop:'panelMoveDrop',onOver:'panelMoveOver(true)',onOut:'panelMoveOut'}">
+            </div>
+当然，这里面还有 resizable 指令也是自己实现的，不过一般我们用不着关心这个的代码实现。
+下面看 app/directives/kibanaPanel.js 里的实现。
+这个里面大多数逻辑跟 addPanel.js 是一样的，都是为了实现一个指令嘛。对于我们来说，关注点在前面那一大段 HTML 字符串，也就是变量 panelHeader。这个就是我们看到的实际效果中，kibana 3 每个 panel 顶部那个小图标工具栏。仔细阅读一下，可以发现除了每个 panel 都一致的那些 span 以外，还有一段是：
+           '<span ng-repeat="task in panelMeta.modals" class="row-button extra" ng-show="task.show">' +
+              '<span bs-modal="task.partial" class="pointer"><i ' +
+                'bs-tooltip="task.description" ng-class="task.icon" class="pointer"></i></span>'+
+            '</span>'
+也就是说，每个 panel 可以在自己的 panelMeta.modals 数组里，定义不同的小图标，弹出不同的对话浮层。我个人给 table panel 二次开发加入的 exportAsCsv 功能，图标就是在这里加入的。+
+
+
+
+
+
+panel 内部实现
+
+终于说到最后了。大家进入到 app/panels/ 下，每个目录都是一种 panel。原因前一节已经分析过了，因为 addPanel.js 里就是直接这样拼接的。入口都是固定的：module.js。
+下面以 stats panel 为例。(因为我最开始就是抄的 stats 做的 percentile，只有表格没有图形，最简单)
+每个目录下都会有至少一下三个文件：
+module.js
+
+module.js 就是一个 controller。跟前面讲过的 controller 写法其实是一致的。在 $scope 对象上，有几个属性是 panel 实现时一般都会有的：
+$scope.panelMeta: 这个前面说到过，其中的 modals 用来定义 panelHeader。
+$scope.panel: 用来定义 panel 的属性。一般实现上，会有一个 default 值预定义好。你会发现这个 $scope.panel 其实就是仪表板纲要里面说的每个 panel 的可设置值！
+然后一般 $scope.init() 都是这样的：
+    $scope.init = function () {
+      $scope.ready = false;
+      $scope.$on('refresh', function () {
+        $scope.get_data();
+      });
+      $scope.get_data();
+    };
+也就是每次有刷新操作，就执行 get_data() 方法。这个方法就是获取 ES 数据，然后渲染效果的入口。
+    $scope.get_data = function () {
+      if(dashboard.indices.length === 0) {
+        return;
+      }
+
+      $scope.panelMeta.loading = true;
+
+      var request,
+        results,
+        boolQuery,
+        queries;
+
+      request = $scope.ejs.Request();
+
+      $scope.panel.queries.ids = querySrv.idsByMode($scope.panel.queries);
+      queries = querySrv.getQueryObjs($scope.panel.queries.ids);
+
+      boolQuery = $scope.ejs.BoolQuery();
+      _.each(queries,function(q) {
+        boolQuery = boolQuery.should(querySrv.toEjsObj(q));
+      });
+
+      request = request
+        .facet($scope.ejs.StatisticalFacet('stats')
+          .field($scope.panel.field)
+          .facetFilter($scope.ejs.QueryFilter(
+            $scope.ejs.FilteredQuery(
+              boolQuery,
+              filterSrv.getBoolFilter(filterSrv.ids())
+              )))).size(0);
+
+      _.each(queries, function (q) {
+        var alias = q.alias || q.query;
+        var query = $scope.ejs.BoolQuery();
+        query.should(querySrv.toEjsObj(q));
+        request.facet($scope.ejs.StatisticalFacet('stats_'+alias)
+          .field($scope.panel.field)
+          .facetFilter($scope.ejs.QueryFilter(
+            $scope.ejs.FilteredQuery(
+              query,
+              filterSrv.getBoolFilter(filterSrv.ids())
+            )
+          ))
+        );
+      });
+
+      $scope.inspector = request.toJSON();
+
+      results = $scope.ejs.doSearch(dashboard.indices, request);
+
+      results.then(function(results) {
+        $scope.panelMeta.loading = false;
+        var value = results.facets.stats[$scope.panel.mode];
+
+        var rows = queries.map(function (q) {
+          var alias = q.alias || q.query;
+          var obj = _.clone(q);
+          obj.label = alias;
+          obj.Label = alias.toLowerCase(); //sort field
+          obj.value = results.facets['stats_'+alias];
+          obj.Value = results.facets['stats_'+alias]; //sort field
+          return obj;
+        });
+
+        $scope.data = {
+          value: value,
+          rows: rows
+        };
+
+        $scope.$emit('render');
+      });
+    };
+stats panel 的这段函数几乎就跟基础示例一样了。
+生成 Request 对象。
+获取关联的 query 对象。
+获取当前页的 filter 对象。
+调用选定的 facets 方法，传入参数。
+如果有多个 query，逐一构建 facets。
+request 完成。生成一个 JSON 内容供 inspector 查看。
+发送请求，等待异步回调。
+回调处理数据成绑定在模板上的 $scope.data。
+渲染页面。
+注：stats/module.js 后面还有一个 filter，terms/module.js 后面还有一个 directive，这些都是为了实际页面效果加的功能，跟 kibana 本身的 filter，directive 本质上是一样的。就不单独讲述了。
+module.html
+
+module.html 就是 panel 的具体页面内容。没有太多可说的。大概框架是：
+<div ng-controller='stats' ng-init="init()">
+ <table ng-style="panel.style" class="table table-striped table-condensed" ng-show="panel.chart == 'table'">
+    <thead>
+      <th>Term</th> <th>{{ panel.tmode == 'terms_stats' ? panel.tstat : 'Count' }}</th> <th>Action</th>
+    </thead>
+    <tr ng-repeat="term in data" ng-show="showMeta(term)">
+      <td class="terms-legend-term">{{term.label}}</td>
+      <td>{{term.data[0][1]}}</td>
+    </tr>
+  </table>
+</div>
+主要就是绑定要 controller 和 init 函数。对于示例的 stats，里面的 data 就是 module.js 最后生成的 $scope.data。
+editor.html
+
+editor.html 是 panel 参数的编辑页面主要内容，参数编辑还有一些共同的标签页，是在 kibana 的 app/partials/ 里，就不讲了。
+editor.html 里，主要就是提供对 $scope.panel 里那些参数的修改保存操作。当然实际上并不是所有参数都暴露出来了。这也是 kibana 3 用户指南里，官方说采用仪表板纲要，比通过页面修改更灵活细腻的原因。
+editor.html 里需要注意的是，为了每次变更都能实时生效，所有的输入框都注册到了刷新事件。所以一般是这样子：
+      <select ng-change="set_refresh(true)" class="input-small" ng-model="panel.format" ng-options="f for f in ['number','float','money','bytes']"></select>
+这个 set_refresh 函数是在 module.js 里定义的：
+    $scope.set_refresh = function (state) {
+      $scope.refresh = state;
+    };
+总结
+
+kibana 3 源码的主体分析，就是这样了。怎么样，看完以后，大家有没有信心也做些二次开发，甚至跟 grafana 一样，替换掉 esResource，换上一个你自己的后端数据源呢？+
+
+
+range facet 面板开发
+
+查看响应时间在不同区间内占比的是非常常见的一个监控和 SLA 需求。Elasticsearch 对此有直接的接口支持。考虑到 kibana3 内大多数还是用 facet 接口，这里也沿用：http://www.elasticsearch.org/guide/en/elasticsearch/reference/current/search-facets-range-facet.html。
+range facet 本身的使用非常简单，就像官网示例那样，直接 curl 命令就可以完成调试：
+curl -XPOST http://localhost:9200/logstash-2014.08.18/_search?pretty=1 -d '{
+    "query" : {
+        "match_all" : {}
+    },
+    "facets" : {
+        "range1" : {
+            "range" : {
+                "field" : "resp_ms",
+                "ranges" : [
+                    { "to" : 100 },
+                    { "from" : 101, "to" : 500 },
+                    { "from" : 500 }
+                ]
+            }
+        }
+    }
+}'
+不过在 kibana 里，我们就不要再自己拼 JSON 发请求了。elastic.js 关于 range facet 的文档见：http://docs.fullscale.co/elasticjs/ejs.RangeFacet.html
+因为 range facet 本身比较简单，所以 RangeFacet 对象支持的方法也比较少。一个 addRange 方法添加 ranges 数组，一个 field 方法添加 field 名称即可。
+代码实现难点
+
+面板代码的主要层次和方法，在上节中已经讲过。在二次开发中，完全可以复制一个类似的现有 panel ，然后开始编辑。比如本节预备开发一个以饼图展示区间统计的面板，即可复制 terms 面板代码：
+# cp -r src/app/panels/terms src/app/panels/ranges
+# sed -i 's/terms/ranges/g' src/app/panels/ranges/*
+terms 面板中，设计有 fmode 和 tmode ，分别控制 terms 和 term_stats 时的参数情况，而 ranges 面板中并不需要，所以去除这部分属性，在 module.js 中，有关 tmode 的内容更加简单。
+构建请求
+
+      if($scope.panel.tmode === 'ranges') {
+        rangefacet = $scope.ejs.RangeFacet('ranges');
+        // AddRange
+        _.each($scope.panel.values, function(v) {
+          rangefacet.addRange(v.from, v.to);
+        });
+        request = request
+          .facet(rangefacet
+          .field($scope.field)
+          .facetFilter($scope.ejs.QueryFilter(
+            $scope.ejs.FilteredQuery(
+              boolQuery,
+              filterSrv.getBoolFilter(filterSrv.ids())
+            )))).size(0);
+      }
+组织结果
+
+        function build_results() {
+          var k = 0;
+          scope.data = [];
+          _.each(scope.results.facets.ranges.ranges, function(v) {
+            var slice;
+            if(scope.panel.tmode === 'ranges') {
+              slice = { label : [v.from,v.to], data : [[k,v.count]], actions: true};
+            }
+            scope.data.push(slice);
+            k = k + 1;
+          });
+
+          scope.data.push({label:'Missing field',
+            data:[[k,scope.results.facets.ranges.missing]],meta:"missing",color:'#aaa',opacity:0});
+
+          if(scope.panel.tmode === 'ranges') {
+            scope.data.push({label:'Other values',
+              data:[[k+1,scope.results.facets.ranges.other]],meta:"other",color:'#444'});
+          }
+        }
+区间范围配置编辑
+
+这个新 panel 的实现，更复杂的地方在配置编辑上如何让 range 范围值支持自定义添加和填写。对此，设计有一个 $scope.panel.values 数组，对应每个区间：
+values 用于计算 facet 的数值范围数组。数组每个元素包括：
+from range 范围的起始点
+to range 范围的结束点
+editor.html 里 Field 栏由普通的文本输入框改成表格输入：
+      <div class="editor-option">
+        <label class="small">Field</label>
+        <input type="text" class="input-small" bs-typeahead="fields.list" ng-model="panel.field" ng-change="set_refresh(true)">
+      </div>
+      <div class="editor-row">
+        <table class="table table-condensed table-striped">
+          <thead>
+            <tr>
+              <th>From</th>
+              <th>To</th>
+              <th ng-show="panel.values.length > 1">Delete</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr ng-repeat="value in panel.values">
+              <td>
+                <div class="editor-option">
+                  <input class="input-small" type="number" ng-model="value.from" ng-change="set_refresh(true)">
+                </div>
+              </td>
+              <td>
+                <div class="editor-option">
+                  <input class="input-small" type="number" ng-model="value.to" ng-change="set_refresh(true)">
+                </div>
+              </td>
+              <td ng-show="panel.values.length > 1">
+                <i ng-click="panel.values = _.without(panel.values, value);set_refresh(true)" class="pointer icon-remove"></i>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <button type="button" class="btn btn-success" ng-click="add_new_value(panel);set_refresh(true)"><i class="icon-plus-sign"></i> Add value</button>
+      </div>
+    </div>
+这里使用了一个 add_new_value 函数，需要在 module.js 中定义：
+    $scope.defaultValue = {
+      'from': 0,
+      'to'  : 100
+    };
+    $scope.add_new_value = function(panel) {
+      panel.values.push(angular.copy($scope.defaultValue));
+    };
+面板单击生成的 filtering 条件
+
+另一个需要注意的地方是饼图出来以后，单击饼图区域，自动生成的 filterSrv 内容。一般的面板这里都是 terms 类型的 filterSrv，传递的是面板的 label 值。而我们这里 label 值显然不是 ES 有效的 terms 语法，还好 filterSrv 有 range 类型(histogram 面板的 time 类型的 filterSrv 是在 daterange 基础上实现的)，所以稍微修改就可以了。
+    $scope.build_search = function(range,negate) {
+      if(_.isUndefined(range.meta)) {
+        filterSrv.set({type:'range',field:$scope.field,from:range.label[0],to:range.label[1],
+          mandate:(negate ? 'mustNot':'must')});
+      } else if(range.meta === 'missing') {
+        filterSrv.set({type:'exists',field:$scope.field,
+          mandate:(negate ? 'must':'mustNot')});
+      } else {
+        return;
+      }
+    };
+面板效果
+
+最终效果如下：
+
+
+属性编辑界面效果如下：
+
+
+ranges panel 完整代码，见 https://github.com/chenryn/kibana/src/app/panels/ranges。+
+
+
+
+
+
+percentile agg 面板开发
+
+Kibana3.1 中有一个面板是 stats 类型，返回对应请求的某指定数值字段的数学统计值，包括最大值、最小值、平均值、方差和标准差。这个 stats 图表是利用 Elasticsearch 的 facets 功能来实现的。而在 Elasticsearch 1.0 版本以后，新出现了一个更细致的功能叫 aggregation，按照官方文档所说，会慢慢的彻底替代掉 facets。具体到 1.1 版本的时候， aggregation 里多了一项 percentile，可以具体返回某指定数值字段的区间分布情况。这对日志分析可是大有帮助。对这项功能，Elasticsearch 官方也很得意的专门在博客上写了一篇报道：Averages can be misleading: try a percentile。
+percentile agg 请求示例如下：
+# curl -XPOST http://127.0.0.1:9200/logstash-2014.07.11/_search -d '{
+    "aggs" : {
+        "request_time_percentiles" : {
+            "percentiles" : {
+                "field" : "request_time", 
+                "percents" : [50,75,90,99]
+            }
+        }
+    }
+}'
+本节就讲解如何基于 Elasticsearch 的 percentile Aggregation 接口实现统计聚合展示面板。其他 Aggregation 也可以类比。
+和上一节实现 facet 接口面板相比，页面布局和主体逻辑基本一致。其难点在以下几方面：
+Kibana3 使用了社区流行的 elastic.js 第三方库作为基础依赖库。而 kibana/src/vendor/elasticjs/elastic.js 文件开头写着版本号是 v1.1.1，但是其实它是 2013-08-14 发布的。而具体加上 aggregation 支持的时间是 2014-03-16 ，但是版本号依然是 v1.1.1！所以在官网文档看到 1.1.1 版的 aggs 语法，其实在 Kibana 里都用不了。
+elastic.js 新版在支持 aggs 接口的同时，对本身的底层依赖也做了大幅度改动，和 ES 的实际交互已经改用官方的 elasticsearch.js 库，elastic.js 本身相当于只是做一个封装。但是 elasticsearch.js 本身目录结构复杂，加入到 require.config.js 里也不是那么容易。
+所以，这里有两种解决办法。
+直接使用 angularjs 框架的 $.http 对象，手拼 JSON 请求体。把 kibana 当做 curl 来处理得了。
+      request = {
+        'stats': {
+          'filter': JSON.parse($scope.ejs.QueryFilter(
+            $scope.ejs.FilteredQuery(
+              boolQuery,
+              filterSrv.getBoolFilter(filterSrv.ids())
+            )
+          ).toString(), true),
+          'aggs': {
+            'stats': {
+              'percentiles': {
+                'field': $scope.panel.field,
+                'percents': $scope.modes
+              }
+            }
+          }
+        }
+      };
+
+      $.each(queries, function (i, q) {
+        var query = $scope.ejs.BoolQuery();
+        query.should(querySrv.toEjsObj(q));
+        var qname = 'stats_'+i;
+        var aggsquery = {};
+        aggsquery[qname] = {
+          'percentiles': {
+            'field': $scope.panel.field,
+            'percents': $scope.modes
+          }
+        };
+        request[qname] = {
+          'filter': JSON.parse($scope.ejs.QueryFilter(
+            $scope.ejs.FilteredQuery(
+              query,
+              filterSrv.getBoolFilter(filterSrv.ids())
+            )
+          ).toString(), true),
+          'aggs': aggsquery
+        };
+      });
+
+      $scope.inspector = angular.toJson({aggs:request},true);
+
+      results = $http({
+        url: config.elasticsearch + '/' + dashboard.indices + '/_search?size=0',
+        method: "POST",
+        data: { aggs: request }
+      });
+统一升级整个 kibana3 的基础依赖库版本，然后采用 agg 接口方法。
+      request = $scope.ejs.Request();
+
+      $scope.panel.queries.ids = querySrv.idsByMode($scope.panel.queries);
+      queries = querySrv.getQueryObjs($scope.panel.queries.ids);
+      boolQuery = $scope.ejs.BoolQuery();
+      _.each(queries,function(q) {
+        boolQuery = boolQuery.should(querySrv.toEjsObj(q));
+      });
+
+      var percents = _.keys($scope.panel.show);
+
+      request = request
+        .aggregation(
+          $scope.ejs.FilterAggregation('stats')
+            .filter($scope.ejs.QueryFilter(
+              $scope.ejs.FilteredQuery(
+                boolQuery,
+                filterSrv.getBoolFilter(filterSrv.ids())
+              )
+            ))
+            .aggregation($scope.ejs.PercentilesAggregation('stats')
+              .field($scope.panel.field)
+              .percents(percents)
+              .compression($scope.panel.compression)
+            )
+          ).size(0);
+页面参数上，根据 percentile 的请求参数需要，主要需要提供一个 $scope.panel.modes 数组即可。不赘述。
+代码实现要点
+
+1.1 和 1.3 版本的返回结果集层次变动
+
+percentile Aggregation 是 Elasticsearch 从 1.1.0 开始新加入的实验性功能，而且在 1.3.0 之后其返回的数据结构发生了变动。所以代码中对 ES 的版本要做判断和兼容性处理。
+Kibana3 提供了一个 service 叫 esVersion，所以我们可以直接这样：
+  module.controller('percentiles', function ($scope, querySrv, dashboard, filterSrv, $http, esVersion) {
+    ...
+      results.then(function(results) {
+        $scope.panelMeta.loading = false;
+        esVersion.gte('1.3.0').then(function(is) {
+          if (is) {
+            var value = results.aggregations.stats['stats']['values'][$scope.panel.mode+'.0'];
+            ...
+          } else {
+            esVersion.gte('1.1.0').then(function(is) {
+              if (is) {
+                var value = results.aggregations.stats['stats'][$scope.panel.mode+'.0'];
+                ...
+              }
+            });
+          }
+        });
+      });
+浮点数排序
+
+percentile Aggregation 返回的数据中，强制保留了百分数的小数点后一位，这导致在 js 处理中会把小数点当做是属性调用的操作符，Kibana 提供的表头点击自动排序表格数据功能也就失效了。所以需要替换掉 sort_field 里的小数点。
+module.js 中：
+            var rows = queries.map(function (q, i) {
+              var alias = q.alias || q.query;
+              var obj = _.clone(q);
+              obj.label = alias;
+              obj.Label = alias.toLowerCase(); //sort field
+              obj.value = results.aggregations['stats_'+i]['stats_'+i]['values'];
+              obj.Value = results.aggregations['stats_'+i]['stats_'+i]['values']; //sort field
+              var _V = {}
+              for ( var k in obj.Value ) {
+                  var v =  obj.Value[k];
+                  k = k.replace('.','');
+                  _V[k] = v;
+              }
+              obj.Value = _V;
+              return obj;
+            });
+            $scope.data = {
+              value: value,
+              rows: rows
+            };
+            $scope.$emit('render');
+module.html 中：
+      <thead>
+        <tr>
+         <th><a href="" ng-click="set_sort('label')" ng-class="{'icon-chevron-down': panel.sort_field == 'label' && panel.sort_reverse == true, 'icon-chevron-up': panel.sort_field == 'label' && panel.sort_reverse == false}"> {{panel.label_name}} </a></th>
+         <th ng-repeat="stat in modes" ng-show="panel.show[stat]">
+          <a href=""
+            ng-click="set_sort(stat)"
+            ng-class="{'icon-chevron-down': panel.sort_field == stat.replace('.','') && panel.sort_reverse == true, 'icon-chevron-up': panel.sort_field == stat.replace('.','') && panel.sort_reverse == false}">
+            {{stat}}%
+          </a>
+          </th>
+        </tr>
+      </thead>
+query alias 的中文支持
+
+目前 Kibana 里都是以 alias 形式来区分每一个子请求的，具体内容是 var alias = q.alias || q.query;，即在页面上搜索框里写的查询语句或者是搜索框左侧色彩设置菜单里的 Legend value。
+比如我的场景下，q.query 是 "xff:10.5.16.*"，q.alias 是"教育网访问"。那么最后发送的请求里这条过滤项的 facets_name 就叫 "stats_教育网访问"。
+同样的写法迁移到 aggregation 上就完全不可解析了。服务器会返回一条报错说：aggregation_name 只能是字母、数字、_ 或者 - 四种。
+这里比较怪的是抓包看到 facets 其实也报错说请求内容解析失败，但是居然同时也返回了结果，只能猜测目前是处在一种兼容状态？
+于是这里稍微修改了一下逻辑，把 queries 数组的 _.each 改用 $.each 来做，这样回调函数里不单返回数组元素，还返回数组下标，下标是一定为数字的，就可以以数组下标作为 aggregation_name 了。后面处理结果的 queries.map 同样以下标来获取即可。
+      $.each(queries, function (i, q) {
+        var query = $scope.ejs.BoolQuery();
+        query.should(querySrv.toEjsObj(q));
+        var qname = 'stats_'+i;
+
+        request.aggregation(
+          $scope.ejs.FilterAggregation(qname)
+            .filter($scope.ejs.QueryFilter(
+              $scope.ejs.FilteredQuery(
+                query,
+                filterSrv.getBoolFilter(filterSrv.ids())
+              )
+            ))
+            .aggregation($scope.ejs.PercentilesAggregation(qname)
+              .field($scope.panel.field)
+              .percents(percents)
+              .compression($scope.panel.compression)
+            )
+          );
+      });
+      $scope.inspector = request.toJSON();
+      results = $scope.ejs.doSearch(dashboard.indices, request);
+面板效果
+
+最终的 percentile 面板界面与 stats 面板界面类似。+
+
+
+
+

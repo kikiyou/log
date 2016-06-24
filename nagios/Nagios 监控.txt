@@ -1,0 +1,521 @@
+Nagios 监控.txt
+
+阅读目录
+
+1. 介绍
+2. 安装
+3. 基本配置
+4. 报警
+5. 分组
+6. 界面美化
+7. 参考
+8. 维护备忘
+回到顶部
+1. 介绍
+Nagios是一款开源软件，能有效监控 Windows 、Linux、VMware 和 Unix 主机状态，交换机、路由器等网络设置等。当监控出异常时提醒系统管理员，当异常恢复时也会通知。Nagios提供一个基于浏览器的web界面，方便管理人员查看系统的运行状态，网络状态、服务状态、日志信息，以及其他异常现象。
+
+朋友们如果觉得麻烦，可以试试OneAlert一键集成nagios，轻松实现微信、电话、邮件、短信、APP的告警通知。http://www.onealert.com/activity/nagios.html 
+回到顶部
+2. 安装
+说明：安装机器为CentOS系统
+
+2.1安装依赖包
+
+由于Nagios提供了Web界面，因此需要安装Apache；由于配置Web界面需要PHP模块支持，所以需要安装PHP，还需要其他插件。
+
+sudo yum install httpd php php-cli gcc glibc glibc-common gd gd-devel net-snmp
+2.2创建用户和分组
+
+sudo useradd -m nagios             #新建用户
+sudo passwd nagios                 #修改密码
+sudo groupadd nagcmd               #新建分组
+sudo usermod -a -G nagcmd nagios   #添加用户到分组
+2.3安装Nagios
+
+下载
+
+wget http://prdownloads.sourceforge.net/sourceforge/nagios/nagios-4.0.8.tar.gz
+安装
+
+tar xzf nagios-4.0.8.tar.gz  #解压
+cd nagios-4.0.8
+sudo ./configure --with-command-group=nagcmd
+sudo make all
+sudo make install
+sudo make install-init
+sudo make install-config
+sudo make install-commandmode
+
+安装 Web界面
+sudo make install-webconf
+为web界面创建登录账号
+
+sudo htpasswd -c /usr/local/nagios/etc/htpasswd.users nagiosadmin
+其中nagiosadmin为账号名可更改，同时会提示添加密码。
+重启Apache服务
+
+sudo service httpd restart
+目录名称	作用
+bin	Nagios 可执行程序所在目录
+etc	Nagios 配置文件目录
+sbin	Nagios cgi 文件所在目录， 也就是执行外部 命令所需要文件所在的目录
+share	Nagios 网页存放路径
+libexec	Nagios 外部插件存放目录
+var	Nagios 日志文件、Lock 等文件所在的目录
+var/archives	agios 日志自动归档目录
+var/rw	用来存放外部命令文件的目录
+2.4安装plugins
+
+下载
+wget http://nagios-plugins.org/download/nagios-plugins-2.0.3.tar.gz
+安装
+tar xzf nagios-plugins-2.0.3.tar.gz
+cd nagios-plugins-2.0.3.tar.gz
+sudo ./configure --with-nagios-user=nagios --with-nagios-group=nagios 
+sudo make 
+sudo make install
+默认安装目录：/usr/lib64/nagios/plugins/
+安装完毕，web界面
+
+
+回到顶部
+3. 基本配置
+3.1 配置文件列表配置文件作用
+
+配置文件	说明
+cgi.cfg	控制CGI访问的配置文件
+nagios.cfg	Nagios的主配置文件
+resource.cfg	变量定义文件，在此定义的变量，用于其它配置文件中使用，如USER1
+U
+S
+E
+R
+1
+                      
+objects	objects为目录，内部含有大量的配置文件
+objects/command.cfg  	命令定义配置文件
+objects/contacts.cfg	联系人和联系人分组配置文件
+objects/localhost.cfg	定义监控本机的配置文件
+objects/printer.cfg	监控打印机的配置文件，默认不启用此文件
+objects/switch.cfg       	监控路由器的配置文件，默认不启用此文件
+objects/templates.cfg	定义主机和服务的配置文件
+objects/timeperiods.cfg	定义监控时间段的配置文件
+objects/windows.cfg	监控Windows机器的配置文件，默认没有启动此文件
+备注：	Nagios 在配置方面非常灵活，默认的配置文件并不是必需的。可以使用这些默认的配置文件，也可以创建自己的配置文件，然后在主配置文件 nagios.cfg 中引用即可。
+注：在以后修改配置文件后，可以利用以下命令行检测配置文件是否正确，可以根据错误提示修改
+
+sudo /usr/local/nagios/bin/nagios -v /usr/local/nagios/etc/nagios.cfg
+ 修改完配置文件后web界面不会立马修改，需要重新加载、启动nagios服务。
+
+sudo service nagios reload
+sudo service nagios restart
+3.2 命令配置文件
+
+文件名称：commands.cfg
+文件定义格式：
+
+define command{
+       command_name    *******
+       command_line    *******
+例如，查看本地负载的命令
+
+# 'check_local_load' command definition
+define command{
+        command_name    check_local_load
+        command_line    $USER1$/check_load -w $ARG1$ -c $ARG2$
+        } 
+其中，变量USER1
+U
+S
+E
+R
+1
+在resource.cfg中定义
+
+# Sets $USER1$ to be the path to the plugins
+$USER1$=/usr/local/nagios/libexec
+USER1
+U
+S
+E
+R
+1
+中自带很多可执行的文件，可在命令行使用-v，查看具体的用法，这里ARG1是发出警告(w)的条件，
+A
+R
+G
+1
+w
+ARG2是发出严重警告(c)的条件。可以用命令执行，命令执行，如
+
+[master@usr]$ /usr/local/nagios/libexec/check_load -w 5.0,4.0,3.0  -c 10.0,6.0,4.0
+OK - load average: 0.00, 0.01, 0.05|load1=0.000;5.000;10.000;0; load5=0.010;4.000;6.000;0; load15=0.050;3.000;4.000;0;
+3.3 监控本地主机
+
+确认nagios.cfg中有对localhoast.cfg文件的引用
+
+# Definitions for monitoring the local (Linux) host
+cfg_file=/usr/local/nagios/etc/objects/localhost.cfg
+localhost.cfg自带了对HTTP、ROOTPartition、SSH等服务的定义。
+在localhost.cfg定义主机
+
+define host{
+        use                  linux-server
+        host_name            localhost
+        alias                localhost
+        address              127.0.0.1
+        }
+其中host_name是对被监控机器的名称，alias是被监控机器名称的别称，address是被监控机器的ip(127.0.0.1表示本地机器)，use指明的是被监控机器继承的模板（定义模板的位置在templates.cfg，具体含义参考报警部分）。
+
+然后在localhost.cfg里完成对服务(service)的定义
+
+define service{
+        use                             local-service
+        host_name                       localhost
+        service_description             磁盘空间
+        check_command                   check_local_disk!20%!10%!/
+        }
+其中，use指被监控机器集成的服务模板（定义模板的位置在templates.cfg，具体含义参考报警部分），host_name指主机名，与上面定义的host_name所指含义相同，service_description指要显示在web界面的内容，check_command指明要执行的命令名称（命令定义的位置是commands.cfg），示例中的参数20%表示，磁盘剩余空间少于20%（ARG1）时开始报警，10
+A
+R
+G
+1
+10
+ARG2$）表示，磁盘剩余空间少于10）时开始报警。
+对本机其他的监控的配置一样。配置完成后可以在浏览器上浏览效果（地址：部署nagios所在机器的ip/nagios）
+监控主机页面
+
+
+监控服务页面
+
+3.4 监控远程Linux/UNIX主机
+
+
+原理
+
+
+监控远程的Linux/UNIX由两部分组成：运行在监控主机上的check_nrpe，运行在被监控主机上的NRPE守护进程。其中check_nrpe不是nagios自带的可执行文件，是安装plugins时带的可执行文件（位置在： /usr/lib64/nagios/plugins/）。
+当监控远程的Linux/UNIX时，工作流程如下：
+
+nagios运行check_nrpe这个插件，并告诉它要执行什么命令
+check_nrpe连接到被监控端的NRPE守护进程，告诉它命令
+被监控端的NRPE守护进程执行具体的操作
+被监控端的NRPE守护进程把执行的结果返回给Nagios做后处理
+被监控端的插件安装与配置
+
+CentOS系统
+
+yum install epel-release
+yum install nrpe nagios-plugins-all openssl
+Debian/Ubuntu系统
+
+apt-get install epel-release
+sudo apt-get install nagios-nrpe-server nagios-plugins
+安装完后进行配置
+打开/etc/nagios/nrpe.cfg文件，在allowed_hosts后面添加上监控机器的ip
+
+## Find the following line and add the Nagios server IP ##
+allowed_hosts=127.0.0.1 192.168.1.150
+开启NRPE服务
+CentOS系统
+
+systemctl start nrpe
+chkconfig nrpe on
+Debian/Ubuntu系统
+
+sudo /etc/init.d/nagios-nrpe-server restart
+回到监控主机，新建目录servers
+
+sudo mkdir /usr/local/nagios/etc/servers
+创建监控远程Linux/UNIX主机的脚本
+
+sudo touch /usr/local/nagios/etc/servers/clients.cfg
+在nagios.cfg中添加上目录servers，这样目录中的文件都会被引入到监控中来。
+
+cfg_dir=/usr/local/nagios/etc/servers
+举例
+
+以“监控远程Linux/UNIX主机的CPU负载”为例
+被监控端
+进入目录cd /etc/nagios/nrpe.cfg
+添加命令行：
+
+command[check_load]=/usr/lib/nagios/plugins/check_load -w 15,10,5 -c 30,25,20
+修改后重启服务
+service nagios-nrpe-server restart
+监控端
+打开servers/clients.cfg文件
+定义主机
+
+define host{
+        use                             linux-server
+        host_name                       10.61.88.23
+        alias                           10.61.88.23
+        address                         10.61.88.23
+}
+定义服务
+define service {
+        use                             generic-service,srv-pnp
+        host_name                       10.61.88.23
+        service_description             CPU负载
+        check_command                   check_nrpe!check_load
+        notifications_enabled           1
+        } 
+其中check_command中check_nrpe!后面的命令check_load对应被监控端的command[check_load]对应的命令。
+
+监控远程windows
+
+说明
+
+nagios对windows进行监控需要在被监控端安装NSClient，NSClient++来监控windows主机有三种方式：check_nt、check_nrpe、nsca。check_nt自带很多功能，可以完成很多基本的需求，但是扩展性差；check_nrpe可以通过执行自己定义的脚本做到很好地扩展。为了满足自己的需求，可以以上几种方式结合使用。
+在objects目录下创建文件windows.cfg，添加主机和服务。
+
+check_nt
+
+添加主机和服务
+
+define host{
+use             windows-server  
+host_name       ruanxi          
+alias           My Windows Server
+address         192.168.0.5     
+}
+
+#监控 windows 主机的开机运作时间
+define service{
+use                     generic-service
+host_name               ruanxi
+service_description     Uptime
+check_command           check_nt!UPTIME
+}
+
+#监控 windows 主机的内存使用状况 
+define service{
+use                     generic-service
+host_name               ruanxi
+service_description     Memory Usage
+check_command           check_nt!MEMUSE!-w 80 -c 90  #内存使用到达80%则warn，到达90%则Critical
+}
+check_nrpe
+
+原理
+
+使用check_nrpe监控windows的原理与监控linux主机的原理一致，这样可以根据特定的需求自己写脚本。
+以监控某个进程是否运行为例
+编辑NSClient配置文件NSC.ini，去掉以下几行前面的“；”号（去掉注释，使其生效）
+
+NRPEListener.dll
+script_dir=scripts\
+CheckExternalScripts.dll
+在NSClient安装目录下的scripts文件夹下，新建一个check_run.bat批处理文件，如下
+
+@echo off
+tasklist |find "%1" >NUL
+IF ERRORLEVEL 1 GOTO err
+IF ERRORLEVEL 0 GOTO ok
+
+:err
+echo CRITICAL: Process does not exist
+exit /B 1
+
+:ok
+echo OK: The process of normal
+exit /B 0
+说明：脚本的退出值与nagios的报警提示对应关系为：0--正常，1--警告，2--严重警告
+在NSC.ini文件中[External Scripts]下面添加如下行：
+
+check_run=scripts\check_run.bat   chrome.exe
+重启NSClinet
+可以在被监控端check_nrpe所在的目录（CentOs默认的安装目录为：/usr/lib64/nagios/plugins/）
+
+./check_nrpe -H hostip -c check_run
+注：-H后写刚才脚本所在的机器，-c后写命令，这里对应配置文件中的check_run
+
+如果结果与预期的一致，那么就可以继续配置监控端了
+
+配置监控端
+修改commands.cfg，增加命令
+
+define command{
+        command_name    check_run
+        command_line    /usr/lib64/nagios/plugins/check_nrpe -H yourip -c check_run
+        }
+修改windows.cfg，增加服务
+
+define service{
+        use                     generic-service-urgent,srv-pnp
+        host_name               youip   ;要展示信息的机器的ip
+        service_description     check_fileexistspan
+        check_command           check_run
+        }
+回到顶部
+4. 报警
+4.1 报警配置文件
+
+修改联系人
+
+配置文件是contacts.cfg.
+联系人定义方式为：
+
+define contact{
+        contact_name                    nagiosadmin             ; 用户名称
+        use                             generic-contact         ; 
+        alias                           Nagios Admin            ; 用户别称
+        email                          ****@****                ;修改为需要通知的邮箱
+        }
+ 该contact继承了templates.cfg中的genetic-contact，如下
+
+define contact{
+        name                            generic-contact         ; The name of this contact template
+        service_notification_period     24x7                    ; service notifications can be sent anytime
+        host_notification_period        24x7                    ; host notifications can be sent anytime
+        service_notification_options    w,u,c,r,f,s             ; send notifications for all service states, flapping events, and scheduled downtime events
+        host_notification_options       d,u,r,f,s               ; send notifications for all host states, flapping events, and scheduled downtime events
+        service_notification_commands   notify-service-by-email ; send service notifications via email
+        host_notification_commands      notify-host-by-email    ; send host notifications via email
+        register                        0                       ; DONT REGISTER THIS DEFINITION - ITS NOT A REAL CONTACT, JUST A TEMPLATE!
+        }
+ ，host_notification_commands指定的方式为notify-host-by-email，如果是微信或短信等其他方式，用逗号隔开写在后面即可。其中命令notify-host-by-email的定义在commands.cfg中默认已定义，如下
+
+# 'notify-host-by-email' command definition
+define command{
+        command_name    notify-host-by-email
+        command_line    /usr/bin/printf "%b" "***** Nagios *****\n\nNotification Type: $NOTIFICATIONTYPE$\nHost: $HOSTNAME$\nState: $HOSTSTATE$\nAddress: $HOSTADDRESS$\nInfo: $HOSTOUTPUT$\n\nDate/Time: $LONGDATETIME$\n" | /usr/bin/mail -s "** $NOTIFICATIONTYPE$ Host Alert: $HOSTNAME$ is $HOSTSTATE$ **" $CONTACTEMAIL$
+        }
+联系人分组定义方式为：
+
+define contactgroup{
+        contactgroup_name       admins
+        alias                   Nagios Administrators
+        members                 nagiosadmin  ;这里填写刚才定义的contact_name
+        }
+4.2 修改报警时间周期
+
+define host{
+        use                     linux-server
+        host_name               server_10.61.91.37
+        alias                   server_10.61.91.37
+        address                 127.0.0.1
+        contact_groups          admins   ;这里添加报警组名称（上面刚定义的）
+        }
+要使主机或服务能够发邮件，必须在定义主机或服务时添加说明，以服务为例。修改localhost.cfg中本机的修改。
+这样主机出现异常时会发送异常到报警组，报警组把异常分配给组里的成员，然后成员按着自己预先设定的报警方式进行报警。主机继承了linux-server模板，模板的定义在templates.cfg文件，文件中存在着主机和服务的继承关系，可以根据需要自己定制参数，以linux-server模板为例：
+define host{
+        name                            linux-server    ; 主机模板名称
+        use                             generic-host    ; 继承通用模板
+        check_period                    24x7            ; 监控的时间段为一周七天，每天24小时，具体定义详见timeperiods.cfg
+        check_interval                  5               ; 对主机每5分钟检测一次（注：这里的数值单位默认为分钟）
+        retry_interval                  1               ; 重试检测时间为1分钟
+        max_check_attempts              1               ;  nagios对主机的最大检查次数，即nagios在检查发现某主机异常时，并不马上下定论
+        check_command                   check-host-alive ;指定检查主机状态的命令，其中“check-host-alive”在commands.cfg文件中定义
+        notification_period             workhours       ; 主机故障时，发送通知的时间范围，其中“workhours”在timeperiods.cfg中进行了定义;
+        notification_interval           30              ; 故障出现，没有修复，每30分钟再发一次告警
+        notification_options            d,u,r           ; 定义主机在什么状态下可以发送通知给使用者，d即down，表示宕机状态;
+        register                        0               ;指明这非真正主机，这只是模板而已
+        }
+注：这里的时间是时间片的含义，定义在nagios.cfg中command_check_interval=60,默认单位是s 。30即30*60s
+4.3 邮件报警
+
+上面是以邮件报警为例说明的，但是前提是系统可以往外发邮件，配置如下(以CentOs为例)
+打开/etc/mail.rc文件
+添加
+
+其中
+set from=[发送人邮箱地址]
+set smtp=[smtp服务器地址]
+set smtp-auth-user=[邮箱用户名]
+set smtp-auth-password=[邮箱密码]
+set smtp-auth=login
+测试：
+mail -s [邮件主题] [邮件地址] 回车，然后输入邮件内容，最后按“Ctrl + D”。如果发送成功表名配置成功。
+
+4.4 微信、短信报警
+
+参考
+
+110云监控 Nagios告警集成 链接
+利用Nagios调用Python程序控制微信公众平台发布报警信 链接
+
+回到顶部
+5. 分组
+完成了以上的配置，已经完成了nagios的基本配置，但是当有多个机器时，所有的机器显示在一起会显得很乱，并且和自己无关的主机也会对自己报警。为了作区分可以对主机和服务进行分组，这样管理人员就可以只关注自己管理的主机和服务。
+
+5.1 主机分组
+
+  定义分组的位置放哪都行，只要引入到nagios.cfg中即可，为了方便找，这里把分组放到localhost.cfg和windows.cfg里。
+
+define hostgroup{
+        hostgroup_name  linux-servers ; The name of the hostgroup
+        alias           Linux Servers ; Long name of the group
+        members         server_10.61.91.37,172.16.41.211,10.61.88.23 ; 主机名
+        }
+点击web界面左边导航条中主机组的表格，分组示例
+
+5.2 服务分组
+
+define servicegroup{
+        servicegroup_name       dbservices
+        alias                   Database Services
+        members                 进程CPU与内存,10.61.88.23,监控端口状态 ;这里写service中的service_description
+        }
+点击web界面左边导航条中服务组的表格，分组示例
+
+回到顶部
+6. 界面美化
+6.1 汉化
+
+可以根据自己的需求对web界面的显示选项进行定制和修改。
+对左边导航条的修改文件是/usr/local/nagios/share/side.php
+修改后，需要重新加载、启动nagios。简易修改效果如下：
+
+
+6.2 pnp4nagios插件
+
+nagios自带图表分析功能，但是不美观，可以利用插件pnp4nagios，它对进行检测的主机和服务进行统计，管理人员可以根据统计报表进行分析、改善。
+官网安装文档
+效果图
+
+
+回到顶部
+7. 参考
+Install And Configure Nagios 4 On Ubuntu 14.10/14.04
+Nagios 监控系统架设全攻略
+
+回到顶部
+8. 维护备忘
+邮箱发件人设置：/etc/mail.rc
+
+配置文件检查：sudo /usr/local/nagios/bin/nagios -v /usr/local/nagios/etc/nagios.cfg
+
+重新加载：sudo service nagios reload      sudo service nagios restart
+
+监控远程Linux
+
+新建用户
+
+sudo useradd -m nagios
+sudo passwd nagios
+安装nagios-plungins: sudo apt-get install nagios-nrpe-server nagios-plugins
+
+配置文件地址：/etc/nagios/nrpe.cfg
+
+插件所在地址：/usr/lib/nagios/plugins  （或 /usr/lib64/nagios/plugins/）
+
+添加可以监控的机器：
+
+sudo vim  /etc/nagios/nrpe.cfg
+
+增加：allowed_hosts=127.0.0.1 10.61.73.49  （server的ip）
+增加具体命令：command[check_cpu_proc]=
+修改后重新启动：sudo service nagios-nrpe-server restart
+
+ 
+
+监控远程Windows
+
+cd /usr/local/nagios/libexec/
+
+查看是否正常工作：
+
+./check_nt -H 172.16.41.84 -p 12489 -v UPTIME     （12489为默认端口）
+
