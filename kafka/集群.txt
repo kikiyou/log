@@ -1,0 +1,55 @@
+集群.txt
+1.zookeeper集群  搭建在110， 111,112  
+  
+2.kafka使用3个节点110， 111,112  
+修改配置文件config/server.properties  
+broker.id=110  
+host.name=192.168.1.110  
+log.dirs=/usr/local/kafka_2.10-0.8.2.0/logs  
+复制到其他两个节点，然后修改对应节点上的config/server.pro   
+  
+3.启动,在三个节点分别执行  
+bin/kafka-server-start.sh  config/server.properties >/dev/null 2>&1 &  
+  
+4 创建主题  
+bin/kafka-topics.sh --create --zookeeper localhost:2181 --replication-factor 3 --partitions 3 --topic test  
+  
+5 查看主题详细  
+bin/kafka-topics.sh --describe --zookeeper localhost:2181 --topic test  
+ --topic test  
+Topic:test      PartitionCount:3        ReplicationFactor:3     Configs:  
+        Topic: test     Partition: 0    Leader: 110     Replicas: 110,111,112  Isr: 110,111,112  
+        Topic: test     Partition: 1    Leader: 111     Replicas: 111,112,110  Isr: 111,112,110  
+        Topic: test     Partition: 2    Leader: 112     Replicas: 112,110,111  Isr: 112,110,111  
+  
+  
+6 去zk上看kafka集群  
+./zkCli.sh
+[zk: localhost:2181(CONNECTED) 5] ls /  
+[admin, zookeeper, consumers, config, controller, zk-fifo, storm, brokers, controller_epoch]  
+[zk: localhost:2181(CONNECTED) 6] ls /brokers   ----> 查看注册在zk内的kafka  
+[topics, ids]  
+[zk: localhost:2181(CONNECTED) 7] ls /brokers/ids  
+[112, 110, 111]  
+[zk: localhost:2181(CONNECTED) 8] ls /brokers/ids/112  
+[]  
+[zk: localhost:2181(CONNECTED) 9] ls /brokers/topics   
+[test]  
+[zk: localhost:2181(CONNECTED) 10] ls /brokers/topics/test   
+[partitions]  
+[zk: localhost:2181(CONNECTED) 11] ls /brokers/topics/test/partitions  
+[2, 1, 0]  
+[zk: localhost:2181(CONNECTED) 12]   
+ 
+
+2  kafka java调用：
+ 
+2.1 java端生产数据， kafka集群消费数据：
+ 
+  
+2 java代码：  向主题test内写入数据  
+  
+3  kafka集群中消费主题test的数据：  
+[root@h2master kafka]# bin/kafka-console-consumer.sh --zookeeper localhost:2181 --topic test --from-beginnin  
+  
+

@@ -1,20 +1,19 @@
-安装搜索引擎
+ 安装搜索引擎
 //brew install elasticsearch
 tar -zxvf elasticsearch-2.3.1.tar.gz
 cd elasticsearch-2.3.1
 
-安装head和bigdesk插件
+安装索引插件head和系统信息插件bigdesk
+bigdesk是elasticsearch的一个集群监控工具，可以通过它来查看es集群的各种状态，如：cpu、内存使用情况，索引数据、搜索情况，http连接数等。
 ./bin/plugin install mobz/elasticsearch-head
 
-./bin/plugin install hlstudio/bigdesk
-
-./bin/plugin install elastic/kibana
-
+# 该版本不满足elasticsearch2.x    ./bin/plugin install lukas-vlcek/bigdesk
+./bin/plugin install hlstudio/bigdesk   #统计图差别很大
 
 
-修改配置
+#修改配置
 vi config/elasticsearch.yml
-修改配置项
+#修改配置项
 cluster.name=es_cluster
 node.name=node0
 path.data=/tmp/elasticsearch/data
@@ -22,45 +21,38 @@ path.logs=/tmp/elasticsearch/logs
 network.host=localhost
 http.port=9200
 
-
-启动
-./bin/elasticsearch
-
-curl -X GET 'http://localhost:9200'
+#启动
+./bin/elasticsearch  -d (守护进程)
 
 
+添加参数  pretty 可以格式化返回结果
+curl -X GET 'http://localhost:9200/?pretty'
+
+索引操作页面
 http://localhost:9200/_plugin/head
+系统信息监控平台
 http://localhost:9200/_plugin/bigdesk
 
-登录集群和管理界面Marvel（收费的）
-http://localhost:9200/_plugin/Marvel
 
 
-安装日志分析工具
+安装日志分析工具: 
 //brew install logstash
 tar -zxvf logstash-2.3.1.tar.gz
 cd logstash-2.3.1
 
+//监控指定服务的log4j日志，过滤后发送到elasticsearch
 mkdir config
 vi config/log4j_to_es.conf
 
-# For detail structure of this file
-# Set: https://www.elastic.co/guide/en/logstash/current/configuration-file-structure.html
 input {
-  # For detail config for log4j as input, 
-  # See: https://www.elastic.co/guide/en/logstash/current/plugins-inputs-log4j.html
   log4j {
     mode => "server"
     host => "localhost"
     port => 4567
   }
 }
-filter {
-  #Only matched data are send to output.
-}
+filter {}
 output {
-  # For detail config for elasticsearch as output, 
-  # See: https://www.elastic.co/guide/en/logstash/current/plugins-outputs-elasticsearch.html
   elasticsearch {
     action => "index"            #The operation on ES
     hosts  => "localhost:9200"     #ElasticSearch host, can be array.
@@ -68,9 +60,9 @@ output {
   }
 }
 
-
 启动
 ./bin/logstash agent -f config/log4j_to_es.conf
+
 
 安装数据显示客户端
 //brew install kibana
@@ -78,8 +70,12 @@ tar -zxvf kibana-4.5.0-darwin-x64.tar.gz
 cd kibana-4.5.0-darwin-x64
 
 
-配置config/kibana.yml
+#安装Marvel
+./bin/plugin install license
+./bin/plugin install marvel-agent
+./bin/kibana plugin --install elasticsearch/marvel/latest
 
+#配置config/kibana.yml
 server.host : "localhost"
 server.post : 5601
 elasticsearch.url : http://localhost:9200
@@ -87,20 +83,14 @@ kibana.index : ".kibana"
 
 启动./bin/kibana
 访问 http://localhost:5601 配置kibana
+http://localhost:5601/app/marvel
 
 
-访问
-http://localhost:9200/_plugin/kibana
-
-
-
-
-
-
-
-log4j.properties
+#log4j.properties
+#全局包的配置
 log4j.rootLogger=INFO,console
- 
+
+#部分包的配置方案
 # for package com.demo.elk, log would be sent to socket appender.
 log4j.logger.com.demo.elk=DEBUG, socket
  
@@ -117,11 +107,3 @@ log4j.appender.console=org.apache.log4j.ConsoleAppender
 log4j.appender.console.target=System.out
 log4j.appender.console.layout=org.apache.log4j.PatternLayout
 log4j.appender.console.layout.ConversionPattern=%d [%-5p] [%l] %m%n
-
-
-
-
-
-
-
-
